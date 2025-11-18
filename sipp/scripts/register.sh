@@ -3,7 +3,11 @@
 #https://github.com/saghul/sipp-scenarios/blob/master/sipp_uas_pcap_g711a.xml
 #https://github.com/SIPp/sipp/issues/412
 
-source /usr/local/NetSapiens/netsapiens-loadgenerator/.env
+# Multi-server compatible registration script
+# Called by register_all.sh with appropriate parameters
+
+BASE_DIR="/usr/local/NetSapiens/netsapiens-loadgenerator"
+source $BASE_DIR/.env
 
 SUT=$1
 
@@ -16,7 +20,7 @@ MEDIA_IP=$7
 PRIVATEIP=$(ip a s|sed -ne '/127.0.0.1/!{s/^[ \t]*inet[ \t]*\([0-9.]\+\)\/.*$/\1/p}')
 
 MAX_USERS=`cat $INPUTFILE | grep -v SEQUENTIAL | wc -l`
-PCT_USERS=$REGISTRATION_PCT # 50% of the users will be registered
+PCT_USERS=$REGISTRATION_PCT # % of the users will be registered
 
 MAX_USERS=`printf "%.0f\n" $(echo "scale=2;$PCT_USERS*$MAX_USERS" |bc)`
 
@@ -25,7 +29,10 @@ CALLRATE=8 #8 registrations per second roll out rate
 
 echo "Registering $INPUTFILE"
 ulimit -n 65536
-echo "`date` - [start] $INPUTFILE $PORT $MEDIA_PORT $CONTROL_PORT (max users $MAX_USERS, pxt users is $PCT_USERS) " >> error_$LOG_FILE.log
+
+# Use BASE_DIR for log file path
+LOG_PATH="$BASE_DIR/sipp/scripts"
+echo "`date` - [start] $INPUTFILE $PORT $MEDIA_PORT $CONTROL_PORT (max users $MAX_USERS, pct users is $PCT_USERS) " >> "$LOG_PATH/error_$LOG_FILE.log"
 set -x
 
 
@@ -45,10 +52,10 @@ sipp \
 	-p $PORT \
 	-cp $CONTROL_PORT \
 	-rtp_echo \
-	-sf /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/register.and.subscribe.sipp.xml \
-	-oocsf /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/sipp_uas_pcap_g711a.xml \
+	-sf $BASE_DIR/sipp/scripts/register.and.subscribe.sipp.xml \
+	-oocsf $BASE_DIR/sipp/scripts/sipp_uas_pcap_g711a.xml \
 	-inf $INPUTFILE \
-	-inf /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/csv/random_user_agents.csv \
+	-inf $BASE_DIR/sipp/csv/random_user_agents.csv \
 	-recv_timeout 60000 \
 	-watchdog_interval 0 \
 	-watchdog_minor_threshold 920000 \
@@ -56,6 +63,6 @@ sipp \
 	-aa -default_behaviors -abortunexp \
 	$MEDIAPORT_LOGIC \
 	-mi $PRIVATEIP \
-	-bg -trace_err -error_file error_$LOG_FILE.log
+	-bg -trace_err -error_file "$LOG_PATH/error_$LOG_FILE.log"
 
 	

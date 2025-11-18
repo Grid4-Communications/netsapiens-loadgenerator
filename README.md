@@ -5,10 +5,60 @@ This set of tools is designed to help generatate a batch of domains with users, 
 
 ## Disclaimer
 
-This application is unsupported by netsapiens/crexendo and is designed for a sample application, test tool and learning use case. Any support or advancement would be a community effort only with no warranties or SLAs provided by the original contributor or netsapiens. These are also real calls that will be tracked against any license or session limits. 
+This application is unsupported by netsapiens/crexendo and is designed for a sample application, test tool and learning use case. Any support or advancement would be a community effort only with no warranties or SLAs provided by the original contributor or netsapiens. These are also real calls that will be tracked against any license or session limits.
 
-## Usage 
-You should run 1 server per target SiPbx servers. Can be run anywhere that can access SiPbx SIP enpoint and Api. Note there is network usage so beware of hidden costs there if using a provider charging for network.
+## Multi-Server Support
+
+This tool now supports testing multiple target servers from a single installation! You can configure and manage load generation for multiple NetSapiens servers with:
+
+- **Independent configuration** per server (SEED, maxDomains, peakCps, etc.)
+- **Isolated CSV files** to prevent data conflicts
+- **Automatic port management** to prevent conflicts when testing multiple servers simultaneously
+- **Server-specific logging** for easier debugging
+
+### Quick Start: Multi-Server Mode
+
+1. **Create `servers.json`** configuration:
+   ```bash
+   cp servers.json.example servers.json
+   # Edit servers.json with your server details
+   ```
+
+2. **Install `jq`** (required for multi-server mode):
+   ```bash
+   # Ubuntu/Debian
+   sudo apt-get install jq
+
+   # macOS
+   brew install jq
+   ```
+
+3. **Generate data for a specific server**:
+   ```bash
+   node server.js --server prod1
+   ```
+
+4. **Run SIPp scripts**:
+   ```bash
+   sipp/scripts/register_all.sh --server prod1
+   sipp/scripts/inbound.sh US_Eastern --server prod1
+   ```
+
+### Legacy Single-Server Mode
+
+Your existing setup continues to work without any changes! If you don't have a `servers.json` file, the system automatically uses your `.env` configuration:
+
+```bash
+# Works exactly as before
+node server.js
+sipp/scripts/register_all.sh
+sipp/scripts/inbound.sh US_Eastern
+```
+
+See [MIGRATION.md](MIGRATION.md) for detailed migration instructions and troubleshooting.
+
+## Usage
+You can run multiple target servers from a single installation (multi-server mode) or use the legacy single-server configuration. The tool can be run anywhere that can access the SIPbx SIP endpoint and API. Note there is network usage so beware of hidden costs if using a provider charging for network.
 
 ## Main User Generation logic
 * Application will create up MAX_DOMAIN number of domains using a random name generation tool. The randomness is controlled by the SEED variable in the .env so repeated running will return similar names. 
@@ -100,25 +150,71 @@ Create a connection to match on "inbound-carrier" and lock to IP if needed. Send
 * natwan = sdp #set on connection accpeting traffic from sipp. allows us to use "echo" function to test audio.
 
 ### Example run
+
+**Legacy Single-Server Mode:**
 ```
-root@core1-phx:/usr/local/NetSapiens/netsapiens-loadgenerator# node server.js 
+root@core1-phx:/usr/local/NetSapiens/netsapiens-loadgenerator# node server.js
+
+======================================
+Configuration Mode: single
+Target Server: ns-api.com
+Server ID: default
+Max Domains: 10
+Peak CPS: 10
+Registration %: 80
+SEED: 123456
+======================================
+
 [0]Creating domain o_conner_kuhic_inc with 29 users in US/Pacific timezone and area code 682 and main number 6825556045
 [1]Creating domain oberbrunner_llc with 27 users in US/Mountain timezone and area code 213 and main number 2135555576
 [2]Creating domain bogisich_group with 30 users in US/Central timezone and area code 576 and main number 5765557408
 [3]Creating domain o_keefe_casper_llc with 42 users in US/Eastern timezone and area code 639 and main number 6395559513
 [4]Creating domain bailey_jerde_and_jacobs_inc with 49 users in US/Alaska timezone and area code 492 and main number 4925555632
+```
 
-root@core1-phx:/usr/local/NetSapiens/netsapiens-loadgenerator# head -n4 sipp/csv/devices/oberbrunner_llc.csv 
+**Multi-Server Mode:**
+```
+root@core1-phx:/usr/local/NetSapiens/netsapiens-loadgenerator# node server.js --server prod1
+
+======================================
+Configuration Mode: multi
+Target Server: sas1.example.com
+Server ID: prod1
+Max Domains: 50
+Peak CPS: 10
+Registration %: 80
+SEED: 12345
+======================================
+
+[0]Creating domain acme_corp with 45 users in US/Pacific timezone and area code 415 and main number 4155556789
+[1]Creating domain tech_solutions_llc with 38 users in US/Mountain timezone and area code 303 and main number 3035557890
+
+
+# Legacy mode CSV output (sipp/csv/devices/):
+root@core1-phx:/usr/local/NetSapiens/netsapiens-loadgenerator# head -n4 sipp/csv/devices/oberbrunner_llc.csv
 SEQUENTIAL
 Dan Ankunding;1001;oberbrunner_llc;[authentication username=1001 password=74d9be7f523f]
 Edmund Kreiger;1000;oberbrunner_llc;[authentication username=1000 password=894abc3c87b9]
 Hugo Koelpin;1007;oberbrunner_llc;[authentication username=1007 password=8912ccd20f76]
 
-root@core1-phx:/usr/local/NetSapiens/netsapiens-loadgenerator# head -n4 sipp/csv/phonenumbers/US_Mountain.csv 
+root@core1-phx:/usr/local/NetSapiens/netsapiens-loadgenerator# head -n4 sipp/csv/phonenumbers/US_Mountain.csv
 RANDOM
 12135555576;oberbrunner_llc;DID for Design
 12135555577;oberbrunner_llc;DID for Development
 12135555575;oberbrunner_llc;DID for Engineering
+
+# Multi-server mode CSV output (sipp/csv/servers/prod1/devices/):
+root@core1-phx:/usr/local/NetSapiens/netsapiens-loadgenerator# head -n4 sipp/csv/servers/prod1/devices/acme_corp.csv
+SEQUENTIAL
+John Smith;1000;acme_corp;[authentication username=1000 password=a1b2c3d4e5f6]
+Jane Doe;1001;acme_corp;[authentication username=1001 password=f6e5d4c3b2a1]
+Bob Johnson;1002;acme_corp;[authentication username=1002 password=123abc456def]
+
+root@core1-phx:/usr/local/NetSapiens/netsapiens-loadgenerator# head -n4 sipp/csv/servers/prod1/phonenumbers/US_Pacific.csv
+RANDOM
+14155556789;acme_corp;DID for Sales
+14155556790;acme_corp;DID for Support
+14155556791;acme_corp;DID for Customer Service
 ```
 
 ### Example in use. 

@@ -1,27 +1,80 @@
 #!/bin/bash
 
-source /usr/local/NetSapiens/netsapiens-loadgenerator/.env
+# Multi-server support with backward compatibility
+# Usage: inbound.sh <timezone> [--server <server-id>]
+# Example: inbound.sh US_Eastern --server prod1
 
-SUT=${SAS_SERVER:-$TARGET_SERVER}
+BASE_DIR="/usr/local/NetSapiens/netsapiens-loadgenerator"
+source $BASE_DIR/.env
 
+# Parse arguments: timezone is first, --server is optional
+TIMEZONE="$1"
+SERVER_ID=""
 
+if [ -z "$TIMEZONE" ]; then
+    echo "Error: Timezone argument required"
+    echo "Usage: inbound.sh <timezone> [--server <server-id>]"
+    echo "Example: inbound.sh US_Eastern --server prod1"
+    exit 1
+fi
 
-INPUTFILE="/usr/local/NetSapiens/netsapiens-loadgenerator/sipp/csv/phonenumbers/${1}.csv" 
+# Check for --server flag in second position
+if [ "$2" == "--server" ] && [ -n "$3" ]; then
+    SERVER_ID="$3"
+    echo "Multi-server mode: Using server '$SERVER_ID'"
+fi
 
-if [ ! -f $INPUTFILE ]; then
-	echo "File $INPUTFILE does not exist"
+# Determine target server and CSV path
+if [ -n "$SERVER_ID" ]; then
+    # Multi-server mode: Load configuration from servers.json
+    if [ -f "$BASE_DIR/servers.json" ]; then
+        if command -v jq &> /dev/null; then
+            SUT=$(jq -r ".servers[] | select(.id==\"$SERVER_ID\") | .hostname" "$BASE_DIR/servers.json")
+            if [ -z "$SUT" ] || [ "$SUT" == "null" ]; then
+                echo "Error: Server '$SERVER_ID' not found in servers.json"
+                exit 1
+            fi
+        else
+            echo "Error: jq is required for multi-server mode but not installed"
+            exit 1
+        fi
+    else
+        echo "Error: servers.json not found"
+        exit 1
+    fi
+
+    INPUTFILE="$BASE_DIR/sipp/csv/servers/$SERVER_ID/phonenumbers/${TIMEZONE}.csv"
+else
+    # Legacy single-server mode
+    SUT=${SAS_SERVER:-$TARGET_SERVER}
+    INPUTFILE="$BASE_DIR/sipp/csv/phonenumbers/${TIMEZONE}.csv"
+    echo "Legacy single-server mode"
+fi
+
+echo "Target server: $SUT"
+echo "Input file: $INPUTFILE"
+
+if [ ! -f "$INPUTFILE" ]; then
+	echo "Error: File $INPUTFILE does not exist"
+	echo "Have you generated data for timezone $TIMEZONE?"
 	exit 1
 fi
 
-if [ ! -f $INPUTFILE ]; then
-	echo "File $INPUTFILE does not exist"
-	exit 1
+# Load PEAK_CPS from server-specific config if available
+if [ -n "$SERVER_ID" ] && [ -f "$BASE_DIR/servers.json" ]; then
+    if command -v jq &> /dev/null; then
+        SERVER_PEAK_CPS=$(jq -r ".servers[] | select(.id==\"$SERVER_ID\") | .peakCps" "$BASE_DIR/servers.json")
+        if [ -n "$SERVER_PEAK_CPS" ] && [ "$SERVER_PEAK_CPS" != "null" ]; then
+            PEAK_CPS=$SERVER_PEAK_CPS
+            echo "Using server-specific PEAK_CPS: $PEAK_CPS"
+        fi
+    fi
 fi
 
+# Fallback to .env or default
 if [ -z "$PEAK_CPS" ]; then
 	echo "No PEAK_CPS specified, defaulting to 7 cps, 1 per script"
 	PEAK_CPS=7
-
 fi
 
 #add some randomness to the PEAK_CPS to avoid exact same call rate every run, make it + or 0 10%
@@ -46,23 +99,32 @@ else
 fi
 
 
-CALLRATE=`printf "%.2f\n" $(echo "scale=2;$PEAK_CPS/7" |bc)` # 7 scripts running at once assuming all TZ's in play. 
+CALLRATE=`printf "%.2f\n" $(echo "scale=2;$PEAK_CPS/7" |bc)` # 7 scripts running at once assuming all TZ's in play.
 DURATION=275 # 5 minutes minus some time for calls to complete
 NUMCALLS=`printf "%.0f\n" $(echo "scale=2;$CALLRATE*$DURATION" |bc)`
 echo "Submitting $NUMCALLS calls to $SUT for $DURATION seconds at $CALLRATE cps using $INPUTFILE"
+
+# Use server-specific log file if in multi-server mode
+if [ -n "$SERVER_ID" ]; then
+    LOG_FILE="$BASE_DIR/sipp/scripts/inbound_${SERVER_ID}_${TIMEZONE}.log"
+else
+    LOG_FILE="$BASE_DIR/sipp/scripts/inbound_${TIMEZONE}.log"
+fi
+
 sipp \
 	${SUT} \
     -r "$CALLRATE" \
 	-m $NUMCALLS \
-	-sf /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/sipp_uac_pcap_g711a.xml \
+	-sf $BASE_DIR/sipp/scripts/sipp_uac_pcap_g711a.xml \
 	-inf $INPUTFILE \
 	-watchdog_interval 900000 \
 	-watchdog_minor_threshold 920000 \
 	-watchdog_major_threshold 9200000 \
 	-t u1 \
-    -inf /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/csv/random_caller_ids.csv \
+    -inf $BASE_DIR/sipp/csv/random_caller_ids.csv \
 	-recv_timeout 60000 \
 	-key media_ip $PUBLICIP \
 	-bg \
-    -trace_err
+    -trace_err \
+    > "$LOG_FILE" 2>&1
 

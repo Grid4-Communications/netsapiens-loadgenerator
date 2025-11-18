@@ -9,9 +9,36 @@ var dotenv = require('dotenv');
 var utils = require('./lib/utils');
 var randomdata = require('./lib/randomdata');
 var nsapi = require('./lib/nsapi');
+const { loadConfig } = require('./lib/config');
 const path = require("path");
 
 dotenv.config();
+
+// Load multi-server or single-server configuration
+let appConfig;
+let selectedServer;
+let apiClient;
+
+try {
+    appConfig = loadConfig();
+    selectedServer = appConfig.selectedServer;
+
+    // Create API client for the selected server
+    apiClient = new nsapi.ServerApiClient(selectedServer);
+
+    console.log(`\n======================================`);
+    console.log(`Configuration Mode: ${appConfig.mode}`);
+    console.log(`Target Server: ${selectedServer.hostname}`);
+    console.log(`Server ID: ${selectedServer.id}`);
+    console.log(`Max Domains: ${selectedServer.maxDomains}`);
+    console.log(`Peak CPS: ${selectedServer.peakCps}`);
+    console.log(`Registration %: ${selectedServer.registrationPct}`);
+    console.log(`SEED: ${selectedServer.seed}`);
+    console.log(`======================================\n`);
+} catch (error) {
+    console.error(`Failed to load configuration: ${error.message}`);
+    process.exit(1);
+}
 
 // Configuration constants
 const CONFIG = {
@@ -39,12 +66,12 @@ const CONFIG = {
     DEVICE_DELAY_MS: 25 // Reduced from 100ms
 };
 
-const SEED = parseInt(process.env.SEED) || 123456;
-const APIKEY = process.env.APIKEY //'';
+// Use server-specific configuration values
+const SEED = selectedServer.seed;
+const APIKEY = selectedServer.apikey;
 fakerator.seed(SEED);
-//random.seed = SEED;
-const TARGET_SERVER = process.env.TARGET_SERVER;
-const MAX_DOMAIN = process.env.MAX_DOMAIN || 1;
+const TARGET_SERVER = selectedServer.hostname;
+const MAX_DOMAIN = selectedServer.maxDomains;
 const NDP_SERVERNAME = process.env.NDP_SERVERNAME || "core1";
 const RESELLER = process.env.RESELLER || "NetSapiens";
 const RECORDING_DIVISER = process.env.RECORDING_DIVISER || 4;
@@ -53,34 +80,35 @@ const RECORDING_DIVISER = process.env.RECORDING_DIVISER || 4;
 // Input validation
 function validateEnvironment() {
     const errors = [];
-    
+
+    // Configuration is now validated in config.js, but do additional checks here
     if (!APIKEY) {
-        errors.push("APIKEY is required. Please set the APIKEY environment variable.");
+        errors.push("APIKEY is required in server configuration");
     } else if (!APIKEY.startsWith('nss_')) {
         console.warn("Warning: APIKEY should typically start with 'nss_'");
     }
-    
+
     if (!TARGET_SERVER) {
-        errors.push("TARGET_SERVER is required. Please set the TARGET_SERVER environment variable.");
+        errors.push("TARGET_SERVER is required in server configuration");
     } else if (!TARGET_SERVER.includes('.')) {
         console.warn("Warning: TARGET_SERVER should be a valid hostname");
     }
-    
+
     if (MAX_DOMAIN < 1 || MAX_DOMAIN > 1000) {
         errors.push("MAX_DOMAIN must be between 1 and 1000");
     }
-    
+
     if (RECORDING_DIVISER < 1) {
         errors.push("RECORDING_DIVISER must be greater than 0");
     }
-    
+
     if (errors.length > 0) {
         console.error("Configuration errors:");
         errors.forEach(error => console.error(`  - ${error}`));
         process.exit(1);
     }
-    
-    console.log("Environment validation passed");
+
+    console.log("Server configuration validation passed");
 }
 
 validateEnvironment();
@@ -365,8 +393,8 @@ async function createDomain(args) {
     }
 
     const path = `domains`;
-    await nsapi.apiCreateSync(path, data);
-    await new Promise(resolve => setTimeout(resolve, 200)); 
+    await apiClient.apiCreateSync(path, data);
+    await new Promise(resolve => setTimeout(resolve, 200));
 
 }
 
@@ -381,12 +409,12 @@ async function createNdpUiConfig(args) {
         "config-value": NDP_SERVERNAME,
         "domain": args.domain
     }
-    nsapi.apiCreate(path, data, () => { }, updateNdpUiConfig);
+    apiClient.apiCreate(path, data, () => { }, updateNdpUiConfig);
 }
 
 async function updateNdpUiConfig(data) {
     const path = `configurations` ;
-    nsapi.apiUpdate(path, data);
+    apiClient.apiUpdate(path, data);
 }
 
 
@@ -394,48 +422,52 @@ async function updateNdpUiConfig(data) {
 async function createUser(data) {
     data.synchronous = 'yes';
     const path = `domains/` + data.domain + '/users';
-    await nsapi.apiCreateSync(path, data, () => { }, updateUser);
+    await apiClient.apiCreateSync(path, data, () => { }, updateUser);
 }
 
 async function createDevice(data) {
     const path = `domains/` + data.domain + '/users/' + data.user + '/devices';
-    await nsapi.apiCreate(path, data, utils.addToCsv, updateDevice);
+    // Pass server ID to utils.addToCsv for server-specific CSV paths
+    const successCallback = (deviceData) => utils.addToCsv(deviceData, selectedServer.id);
+    await apiClient.apiCreate(path, data, successCallback, updateDevice);
 }
 
 async function createMac(data) {
     const path = `domains/` + data.domain + '/phones';
-    await nsapi.apiCreate(path, data);
+    await apiClient.apiCreate(path, data);
 }
 
 async function updateUser(data) {
     const path = `domains/` + data.domain + '/users/' + data.user;
-    nsapi.apiUpdate(path, data);
+    apiClient.apiUpdate(path, data);
 }
 
 async function updateDevice(data) {
     const path = `domains/` + data.domain + '/users/' + data.user + '/devices/' + data.device;
-    nsapi.apiUpdate(path, data);
+    apiClient.apiUpdate(path, data);
 }
 
 async function createPhonenumber(data) {
     const path = `domains/` + data.domain + '/phonenumbers';
-    nsapi.apiCreate(path, data, utils.addToCsvNumber, updatePhonenumber);
+    // Pass server ID to utils.addToCsvNumber for server-specific CSV paths
+    const successCallback = (phoneData) => utils.addToCsvNumber(phoneData, selectedServer.id);
+    apiClient.apiCreate(path, data, successCallback, updatePhonenumber);
 }
 
 async function updatePhonenumber(data) {
     const path = `domains/` + data.domain + '/phonenumbers/' + data.phonenumber;
-    nsapi.apiUpdate(path, data);
+    apiClient.apiUpdate(path, data);
 }
 
 async function createQueue(i, data) {
     data.synchronous = 'yes';
     const path = `domains/` + data.domain + '/callqueues';
-    await nsapi.apiCreateSync(path, data, () => {  }, updateQueue);
+    await apiClient.apiCreateSync(path, data, () => {  }, updateQueue);
 }
 
 function updateQueue(data) {
     const path = `domains/` + data.domain + '/callqueues/'+ data.callqueue;
-    nsapi.apiUpdate(path, data);
+    apiClient.apiUpdate(path, data);
 }
 
 
@@ -447,7 +479,7 @@ async function createAgent(data) {
     }
     const path = `domains/` + data.domain + '/callqueues/' + data.callqueue + '/agents';
     try {
-        await nsapi.apiCreateSync(path, data);
+        await apiClient.apiCreateSync(path, data);
     } catch (error) {
         console.error(`Failed to create agent ${data['callqueue-agent-id']} for queue ${data.callqueue}:`, error.message);
     }
