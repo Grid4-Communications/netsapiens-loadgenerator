@@ -6,7 +6,7 @@
       "apikey": "nss_your_api_key_here",
       "maxDomains": 50,
       "peakCps": 10,
-      "registrationPct": 80,
+      "registrationPct": 0.8,
       "seed": 12345,
       "description": "Production Server 1 - Primary load testing environment"
     },
@@ -16,7 +16,7 @@
       "apikey": "nss_another_api_key_here",
       "maxDomains": 100,
       "peakCps": 20,
-      "registrationPct": 90,
+      "registrationPct": 0.9,
       "seed": 67890,
       "description": "Production Server 2 - Secondary load testing environment"
     },
@@ -25,10 +25,10 @@
       "hostname": "staging.example.com",
       "apikey": "nss_staging_api_key",
       "maxDomains": 10,
-      "peakCps": 5,
-      "registrationPct": 75,
+      "peakCps": 0.5,
+      "registrationPct": 0.75,
       "seed": 11111,
-      "description": "Staging environment for testing"
+      "description": "Staging environment for testing - low load with decimal CPS"
     }
   ]
 }

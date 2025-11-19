@@ -54,7 +54,7 @@ Edit `servers.json` with your server configurations:
       "apikey": "nss_your_api_key_here",
       "maxDomains": 50,
       "peakCps": 10,
-      "registrationPct": 80,
+      "registrationPct": 0.8,
       "seed": 12345,
       "description": "Production Server 1"
     },
@@ -64,7 +64,7 @@ Edit `servers.json` with your server configurations:
       "apikey": "nss_another_api_key",
       "maxDomains": 100,
       "peakCps": 20,
-      "registrationPct": 90,
+      "registrationPct": 0.9,
       "seed": 67890,
       "description": "Production Server 2"
     }
@@ -76,6 +76,12 @@ Edit `servers.json` with your server configurations:
 - **Unique `id`**: Used for file organization and command-line arguments
 - **Independent `seed`**: Ensures each server has distinct but reproducible test data
 - **Server-specific settings**: `maxDomains`, `peakCps`, `registrationPct` can differ per server
+
+**Field formats**:
+- `peakCps`: Calls per second (supports decimals like 0.5 for low load)
+- `registrationPct`: Fraction of devices to register, 0-1 range (e.g., 0.8 = 80%)
+- `maxDomains`: Integer number of domains to generate
+- `seed`: Integer seed for random data generation
 
 #### Step 2: Install `jq` (Required for Multi-Server Mode)
 
