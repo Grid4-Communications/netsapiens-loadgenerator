@@ -124,16 +124,24 @@ if [ -z "$PEAK_CPS" ]; then
 	PEAK_CPS=7
 fi
 
-#add some randomness to the PEAK_CPS to avoid exact same call rate every run, make it + or 0 10%
-RANDOM_ADJUSTMENT=$(( ( RANDOM % (PEAK_CPS / 10) ) + 1 ))
+#add some randomness to the PEAK_CPS to avoid exact same call rate every run, make it + or - 10%
+# Use bc for decimal arithmetic to support CPS < 1
+TEN_PERCENT=$(echo "scale=4; $PEAK_CPS * 0.1" | bc)
+
+# Generate random adjustment between 0 and 10% of PEAK_CPS
+# RANDOM generates 0-32767, we'll scale it to 0-1 range then multiply by 10%
+RANDOM_FACTOR=$(echo "scale=4; $RANDOM / 32767" | bc)
+RANDOM_ADJUSTMENT=$(echo "scale=4; $TEN_PERCENT * $RANDOM_FACTOR" | bc)
+
+# Randomly add or subtract the adjustment
 if (( RANDOM % 2 )); then
-	PEAK_CPS=$((PEAK_CPS + RANDOM_ADJUSTMENT))
+	PEAK_CPS=$(echo "scale=4; $PEAK_CPS + $RANDOM_ADJUSTMENT" | bc)
 else
-	PEAK_CPS=$((PEAK_CPS - RANDOM_ADJUSTMENT))
+	PEAK_CPS=$(echo "scale=4; $PEAK_CPS - $RANDOM_ADJUSTMENT" | bc)
 fi
 
-#round PEAK_CPS to 1 decimal place
-PEAK_CPS=`printf "%.0f\n" "$(echo "scale=2;$PEAK_CPS" |bc)"`
+#round PEAK_CPS to 2 decimal places (to support CPS < 1)
+PEAK_CPS=$(echo "scale=2; $PEAK_CPS / 1" | bc)
 
 
 PUBLICIP=`dig +short myip.opendns.com @resolver1.opendns.com -4`
