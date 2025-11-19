@@ -17,6 +17,7 @@ PORT=$4
 MEDIA_PORT=$5
 CONTROL_PORT=$6
 MEDIA_IP=$7
+SERVER_ID=$8  # Optional: for multi-server stats tracking
 PRIVATEIP=$(ip a s|sed -ne '/127.0.0.1/!{s/^[ \t]*inet[ \t]*\([0-9.]\+\)\/.*$/\1/p}')
 
 MAX_USERS=`cat $INPUTFILE | grep -v SEQUENTIAL | wc -l`
@@ -32,7 +33,16 @@ ulimit -n 65536
 
 # Use BASE_DIR for log file path
 LOG_PATH="$BASE_DIR/sipp/scripts"
-echo "`date` - [start] $INPUTFILE $PORT $MEDIA_PORT $CONTROL_PORT (max users $MAX_USERS, pct users is $PCT_USERS) " >> "$LOG_PATH/error_$LOG_FILE.log"
+STATS_PATH="$BASE_DIR/sipp/stats"
+
+# Create stats filename with server ID if provided
+if [ -n "$SERVER_ID" ]; then
+    STATS_FILE="${STATS_PATH}/${SERVER_ID}_register_${LOG_FILE}_$$.csv"
+else
+    STATS_FILE="${STATS_PATH}/register_${LOG_FILE}_$$.csv"
+fi
+
+echo "`date` - [start] $INPUTFILE $PORT $MEDIA_PORT $CONTROL_PORT (max users $MAX_USERS, pct users is $PCT_USERS) stats: $STATS_FILE" >> "$LOG_PATH/error_$LOG_FILE.log"
 set -x
 
 
@@ -63,6 +73,7 @@ sipp \
 	-aa -default_behaviors -abortunexp \
 	$MEDIAPORT_LOGIC \
 	-mi $PRIVATEIP \
-	-bg -trace_err -error_file "$LOG_PATH/error_$LOG_FILE.log"
+	-bg -trace_err -error_file "$LOG_PATH/error_$LOG_FILE.log" \
+	-trace_stat -stf "$STATS_FILE" -fd 1
 
 	

@@ -143,12 +143,12 @@ for file in $CSV_PATH/*; do
 
 	TRANSPORT_TYPE=$((COUNTER % 3));
 	if [ $TRANSPORT_TYPE -eq 2 ]; then
-		/usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/register.sh "$SUT" "$file" "u1" $SIPPORT $MEDIAPORT $CONTROLPORT $PUBLICIP
+		/usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/register.sh "$SUT" "$file" "u1" $SIPPORT $MEDIAPORT $CONTROLPORT $PUBLICIP "$SERVER_ID"
 	elif [ $TRANSPORT_TYPE -eq 1 ]; then
-		/usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/register.sh "$SUT" "$file" "t1" $SIPPORT $MEDIAPORT $CONTROLPORT $PUBLICIP
+		/usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/register.sh "$SUT" "$file" "t1" $SIPPORT $MEDIAPORT $CONTROLPORT $PUBLICIP "$SERVER_ID"
 	else
 		#TODO: add tls support here.
-		/usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/register.sh "$SUT" "$file" "u1" $SIPPORT $MEDIAPORT $CONTROLPORT $PUBLICIP 
+		/usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/register.sh "$SUT" "$file" "u1" $SIPPORT $MEDIAPORT $CONTROLPORT $PUBLICIP "$SERVER_ID"
 	fi
     
 done

@@ -234,6 +234,162 @@ RANDOM
 ![alt text](images/image-6.png)
 
 
+## Prometheus Metrics Monitoring
+
+This tool includes a built-in metrics server that exposes SIPp response time statistics in Prometheus format. Track response times, percentiles, and performance metrics across all your load tests.
+
+### Features
+
+- **Response Time Tracking**: Both histogram (with percentiles) and summary metrics
+- **Multi-Server Support**: Separate metrics per server when using servers.json configuration
+- **Real-time Updates**: Continuously monitors SIPp statistics files
+- **Prometheus Compatible**: Standard /metrics endpoint for Prometheus scraping
+- **Multiple Metrics Types**:
+  - `sipp_response_time_seconds` - Histogram with buckets (10ms to 5s)
+  - `sipp_response_time_seconds_summary` - Summary with P50, P95, P99 quantiles
+  - `sipp_response_time_average_seconds` - Average response time gauge
+  - `sipp_response_time_p50_seconds` - P50 (median) gauge
+  - `sipp_response_time_p95_seconds` - P95 gauge
+  - `sipp_response_time_p99_seconds` - P99 gauge
+  - `sipp_response_count_total` - Total response count
+
+All metrics include labels: `{server="...", scenario="...", operation="..."}`
+
+### Quick Start
+
+1. **Install dependencies** (if not already installed):
+   ```bash
+   npm install
+   ```
+
+2. **Start the metrics server**:
+   ```bash
+   # Using npm script
+   npm run metrics
+
+   # Or directly
+   node metrics-server.js
+
+   # Or using the startup script
+   ./scripts/start-metrics-server.sh start
+   ```
+
+3. **Access metrics**:
+   - Prometheus endpoint: http://localhost:9090/metrics
+   - Health check: http://localhost:9090/health
+   - Server info: http://localhost:9090/
+
+4. **Run your SIPp load tests** - metrics will automatically be collected from the SIPp statistics files.
+
+### Configuration
+
+Configure the metrics server using environment variables in your `.env` file:
+
+```bash
+# Metrics server configuration
+METRICS_PORT=9090           # Port for metrics server (default: 9090)
+STATS_DIR=./sipp/stats      # Directory for SIPp stats files (default: ./sipp/stats)
+UPDATE_INTERVAL=5           # Update interval in seconds (default: 5)
+```
+
+### Using the Startup Script
+
+The startup script provides easy management of the metrics server:
+
+```bash
+# Start the server
+./scripts/start-metrics-server.sh start
+
+# Check status
+./scripts/start-metrics-server.sh status
+
+# View logs
+./scripts/start-metrics-server.sh logs
+
+# Restart the server
+./scripts/start-metrics-server.sh restart
+
+# Stop the server
+./scripts/start-metrics-server.sh stop
+```
+
+### Prometheus Configuration
+
+Add this scrape config to your `prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: 'sipp-loadgen'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 15s
+```
+
+### Example Prometheus Queries
+
+```promql
+# P95 response time by server
+sipp_response_time_p95_seconds{server="prod1"}
+
+# Average response time across all servers
+avg(sipp_response_time_average_seconds)
+
+# Response count by scenario
+sum by (scenario) (sipp_response_count_total)
+
+# Histogram quantile (P95) from histogram data
+histogram_quantile(0.95, rate(sipp_response_time_seconds_bucket[5m]))
+
+# Summary quantile (P99)
+sipp_response_time_seconds_summary{quantile="0.99"}
+```
+
+### Grafana Dashboard
+
+You can create a Grafana dashboard with panels for:
+
+1. **Response Time Over Time** (line chart)
+   - Query: `sipp_response_time_p50_seconds`, `sipp_response_time_p95_seconds`, `sipp_response_time_p99_seconds`
+
+2. **Response Time Distribution** (heatmap)
+   - Query: `rate(sipp_response_time_seconds_bucket[5m])`
+
+3. **Average Response Time by Server** (gauge)
+   - Query: `sipp_response_time_average_seconds`
+
+4. **Total Responses** (counter)
+   - Query: `sipp_response_count_total`
+
+5. **Active Stats Files** (gauge)
+   - Query: `sipp_stats_files_active`
+
+### How It Works
+
+1. **SIPp Statistics**: The bash scripts automatically enable `-trace_stat` flag when running SIPp, generating CSV statistics files in `sipp/stats/`
+
+2. **File Watching**: The metrics server uses `chokidar` to watch for new or modified stats files
+
+3. **CSV Parsing**: When files change, the parser extracts response time distributions from SIPp's output
+
+4. **Metrics Export**: Prometheus metrics are calculated and exposed at the `/metrics` endpoint
+
+5. **Multi-Server**: When using `--server` flag, metrics are automatically labeled with the server ID
+
+### Troubleshooting
+
+**Metrics not updating:**
+- Check that SIPp scripts are running: `ps aux | grep sipp`
+- Verify stats files exist: `ls -la sipp/stats/`
+- Check metrics server logs: `./scripts/start-metrics-server.sh logs`
+
+**No stats files generated:**
+- Ensure you've run the latest version of register.sh scripts
+- Check that SIPp supports `-trace_stat` flag: `sipp -h | grep trace_stat`
+
+**Port 9090 already in use:**
+- Change `METRICS_PORT` in `.env` to a different port
+- Or stop conflicting service: `sudo lsof -i :9090`
+
 ### Additional Tools 
 
 ## Socket Tester. 
