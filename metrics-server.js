@@ -97,55 +97,74 @@ app.get('/', (req, res) => {
 
 /**
  * Update metrics from all stats files
+ * Only parses files that have been modified since last check
  */
 function updateMetrics() {
   try {
-    // Parse all stats files in directory
-    const parsedStats = parseStatsDirectory(STATS_DIR);
+    if (!fs.existsSync(STATS_DIR)) {
+      return;
+    }
+
+    const files = fs.readdirSync(STATS_DIR).filter(f => f.endsWith('.csv'));
+    const currentFiles = new Set();
+    let parsedCount = 0;
+    let skippedCount = 0;
 
     // Update file count metric
-    updateStatsFileCount(parsedStats.length);
-
-    // Update cache with current files
-    const currentFiles = new Set();
+    updateStatsFileCount(files.length);
 
     // Process each stats file
-    for (const entry of parsedStats) {
-      const { serverId, scenario, stats, file } = entry;
+    for (const filename of files) {
+      const filePath = path.join(STATS_DIR, filename);
+      currentFiles.add(filePath);
 
-      currentFiles.add(file);
+      try {
+        // Check if file was modified since last update
+        const fileStat = fs.statSync(filePath);
+        const lastModified = fileStat.mtimeMs;
 
-      // Check if file was modified since last update
-      const fileStat = fs.statSync(file);
-      const lastModified = fileStat.mtimeMs;
+        const cachedModTime = statsFileCache.get(filePath);
+        if (cachedModTime && cachedModTime >= lastModified) {
+          // File hasn't changed, skip parsing
+          skippedCount++;
+          continue;
+        }
 
-      const cachedModTime = statsFileCache.get(file);
-      if (cachedModTime && cachedModTime >= lastModified) {
-        // File hasn't changed, skip
-        continue;
-      }
+        // Parse only this file (not all files)
+        const { parseSippStatsFile, parseStatsFilename } = require('./lib/sipp-parser');
+        const stats = parseSippStatsFile(filePath);
 
-      // Update cache
-      statsFileCache.set(file, lastModified);
+        if (!stats) {
+          continue;
+        }
 
-      // Extract response times for different operations
-      // SIPp register.and.subscribe.sipp.xml has 'register' and 'reregister' operations
-      const { responseTimes } = stats;
+        const metadata = parseStatsFilename(filename);
+        const { serverId, scenario } = metadata;
 
-      if (responseTimes && responseTimes.count > 0) {
-        // For register scenario, we'll track as 'register' operation
-        // In a more complex setup, you'd parse which specific RTD label was used
-        const operation = scenario === 'register' ? 'register' : scenario;
+        // Update cache
+        statsFileCache.set(filePath, lastModified);
+        parsedCount++;
 
-        updateResponseTimeMetrics(serverId, scenario, operation, responseTimes);
+        // Extract response times for different operations
+        const { responseTimes } = stats;
 
-        console.log(
-          `Updated metrics: server=${serverId}, scenario=${scenario}, ` +
-          `count=${responseTimes.count}, avg=${responseTimes.average.toFixed(3)}s, ` +
-          `p50=${responseTimes.percentiles.p50.toFixed(3)}s, ` +
-          `p95=${responseTimes.percentiles.p95.toFixed(3)}s, ` +
-          `p99=${responseTimes.percentiles.p99.toFixed(3)}s`
-        );
+        if (responseTimes && responseTimes.count > 0) {
+          const operation = scenario === 'register' ? 'register' : scenario;
+
+          updateResponseTimeMetrics(serverId, scenario, operation, responseTimes);
+
+          if (parsedCount <= 5) { // Only log first 5 to reduce noise
+            console.log(
+              `Updated metrics: server=${serverId}, scenario=${scenario}, ` +
+              `count=${responseTimes.count}, avg=${responseTimes.average.toFixed(3)}s, ` +
+              `p50=${responseTimes.percentiles.p50.toFixed(3)}s, ` +
+              `p95=${responseTimes.percentiles.p95.toFixed(3)}s, ` +
+              `p99=${responseTimes.percentiles.p99.toFixed(3)}s`
+            );
+          }
+        }
+      } catch (err) {
+        console.error(`Error processing file ${filename}:`, err.message);
       }
     }
 
@@ -157,10 +176,90 @@ function updateMetrics() {
       }
     }
 
+    if (parsedCount > 0 || (Date.now() - lastUpdateTime) > 60000) {
+      console.log(`Update cycle: ${parsedCount} parsed, ${skippedCount} skipped, ${files.length} total files`);
+    }
+
     lastUpdateTime = Date.now();
   } catch (error) {
     console.error('Error updating metrics:', error);
   }
+}
+
+/**
+ * Process a single stats file
+ * @param {string} filePath - Path to stats file
+ */
+function processStatsFile(filePath) {
+  try {
+    const filename = path.basename(filePath);
+
+    // Check if file was modified since last update
+    const fileStat = fs.statSync(filePath);
+    const lastModified = fileStat.mtimeMs;
+
+    const cachedModTime = statsFileCache.get(filePath);
+    if (cachedModTime && cachedModTime >= lastModified) {
+      // File hasn't changed, skip parsing
+      return false;
+    }
+
+    // Parse only this file
+    const { parseSippStatsFile, parseStatsFilename } = require('./lib/sipp-parser');
+    const stats = parseSippStatsFile(filePath);
+
+    if (!stats) {
+      return false;
+    }
+
+    const metadata = parseStatsFilename(filename);
+    const { serverId, scenario } = metadata;
+
+    // Update cache
+    statsFileCache.set(filePath, lastModified);
+
+    // Extract response times
+    const { responseTimes } = stats;
+
+    if (responseTimes && responseTimes.count > 0) {
+      const operation = scenario === 'register' ? 'register' : scenario;
+      updateResponseTimeMetrics(serverId, scenario, operation, responseTimes);
+      return true;
+    }
+
+    return false;
+  } catch (err) {
+    console.error(`Error processing file ${path.basename(filePath)}:`, err.message);
+    return false;
+  }
+}
+
+// Debounce mechanism to batch rapid file changes
+let updateDebounceTimer = null;
+let pendingFiles = new Set();
+
+function scheduleFileUpdate(filePath) {
+  pendingFiles.add(filePath);
+
+  if (updateDebounceTimer) {
+    clearTimeout(updateDebounceTimer);
+  }
+
+  updateDebounceTimer = setTimeout(() => {
+    const files = Array.from(pendingFiles);
+    pendingFiles.clear();
+
+    let processed = 0;
+    for (const file of files) {
+      if (processStatsFile(file)) {
+        processed++;
+      }
+    }
+
+    if (processed > 0) {
+      lastUpdateTime = Date.now();
+    }
+  }, 200); // Wait 200ms for more changes
 }
 
 /**
@@ -175,28 +274,28 @@ function startWatching() {
 
   console.log(`Watching stats directory: ${STATS_DIR}`);
 
-  // Watch for file changes
+  // Watch for file changes with reduced polling
   const watcher = chokidar.watch(`${STATS_DIR}/*.csv`, {
     persistent: true,
-    ignoreInitial: false,
+    ignoreInitial: true, // Don't process all files on startup
     awaitWriteFinish: {
-      stabilityThreshold: 1000,
-      pollInterval: 100
-    }
+      stabilityThreshold: 2000, // Increased to reduce churn
+      pollInterval: 500
+    },
+    usePolling: false, // Use native fs events for better performance
+    interval: 5000, // Fallback polling interval
+    binaryInterval: 5000
   });
 
   watcher.on('add', (filePath) => {
-    console.log(`New stats file detected: ${path.basename(filePath)}`);
-    updateMetrics();
+    scheduleFileUpdate(filePath);
   });
 
   watcher.on('change', (filePath) => {
-    console.log(`Stats file updated: ${path.basename(filePath)}`);
-    updateMetrics();
+    scheduleFileUpdate(filePath);
   });
 
   watcher.on('unlink', (filePath) => {
-    console.log(`Stats file removed: ${path.basename(filePath)}`);
     statsFileCache.delete(filePath);
   });
 
@@ -204,10 +303,10 @@ function startWatching() {
     console.error('Watcher error:', error);
   });
 
-  // Also poll periodically to catch any missed updates
+  // Periodic full scan to catch any missed updates (less frequent)
   setInterval(() => {
     updateMetrics();
-  }, UPDATE_INTERVAL * 1000);
+  }, Math.max(UPDATE_INTERVAL * 1000, 30000)); // At least 30 seconds between full scans
 
   return watcher;
 }
