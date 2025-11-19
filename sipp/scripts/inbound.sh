@@ -21,6 +21,53 @@ fi
 # Check for --server flag in second position
 if [ "$2" == "--server" ] && [ -n "$3" ]; then
     SERVER_ID="$3"
+
+    # Handle --server all: loop through all servers in servers.json
+    if [ "$SERVER_ID" == "all" ]; then
+        if [ ! -f "$BASE_DIR/servers.json" ]; then
+            echo "Error: servers.json not found. Required for --server all"
+            exit 1
+        fi
+
+        if ! command -v jq &> /dev/null; then
+            echo "Error: jq is required for --server all but not installed"
+            exit 1
+        fi
+
+        # Get all server IDs from servers.json
+        SERVER_IDS=$(jq -r '.servers[].id' "$BASE_DIR/servers.json")
+
+        if [ -z "$SERVER_IDS" ]; then
+            echo "Error: No servers found in servers.json"
+            exit 1
+        fi
+
+        echo "=========================================="
+        echo "Running inbound for ALL servers in servers.json"
+        echo "Timezone: $TIMEZONE"
+        echo "=========================================="
+
+        # Loop through each server and call this script recursively
+        for SID in $SERVER_IDS; do
+            echo ""
+            echo ">>> Starting inbound calls for server: $SID (timezone: $TIMEZONE)"
+            echo "---"
+            $0 "$TIMEZONE" --server "$SID"
+            RESULT=$?
+            if [ $RESULT -ne 0 ]; then
+                echo "Warning: Inbound calls for server '$SID' failed with exit code $RESULT"
+            else
+                echo ">>> Completed inbound calls for server: $SID"
+            fi
+            echo ""
+        done
+
+        echo "=========================================="
+        echo "Finished running for all servers"
+        echo "=========================================="
+        exit 0
+    fi
+
     echo "Multi-server mode: Using server '$SERVER_ID'"
 fi
 

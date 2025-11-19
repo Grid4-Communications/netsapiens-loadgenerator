@@ -40,8 +40,13 @@ This tool now supports testing multiple target servers from a single installatio
 
 4. **Run SIPp scripts**:
    ```bash
+   # For a specific server
    sipp/scripts/register_all.sh --server prod1
    sipp/scripts/inbound.sh US_Eastern --server prod1
+
+   # For ALL servers at once
+   sipp/scripts/register_all.sh --server all
+   sipp/scripts/inbound.sh US_Eastern --server all
    ```
 
 ### Legacy Single-Server Mode
@@ -53,6 +58,56 @@ Your existing setup continues to work without any changes! If you don't have a `
 node server.js
 sipp/scripts/register_all.sh
 sipp/scripts/inbound.sh US_Eastern
+```
+
+### Running for All Servers at Once
+
+You can run scripts for all configured servers with a single command using `--server all`:
+
+```bash
+# Register devices for all servers
+sipp/scripts/register_all.sh --server all
+
+# Run inbound calls for all servers (specific timezone)
+sipp/scripts/inbound.sh US_Eastern --server all
+
+# Generate data for all servers
+# Note: Use a loop for this as server.js requires separate runs
+for server in prod1 prod2 staging; do
+  node server.js --server $server
+done
+```
+
+**How it works:**
+- The script reads all server IDs from `servers.json`
+- Loops through each server sequentially
+- Calls itself recursively with each specific server ID
+- Provides clear output showing progress for each server
+- Continues even if one server fails (with a warning)
+
+**Example output:**
+```
+==========================================
+Running for ALL servers in servers.json
+==========================================
+
+>>> Starting registration for server: prod1
+---
+Multi-server mode: Using server 'prod1'
+Target server: sas1.example.com
+...
+>>> Completed registration for server: prod1
+
+>>> Starting registration for server: prod2
+---
+Multi-server mode: Using server 'prod2'
+Target server: sas2.example.com
+...
+>>> Completed registration for server: prod2
+
+==========================================
+Finished running for all servers
+==========================================
 ```
 
 See [MIGRATION.md](MIGRATION.md) for detailed migration instructions and troubleshooting.
