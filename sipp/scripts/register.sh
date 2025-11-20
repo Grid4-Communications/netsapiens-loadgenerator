@@ -74,6 +74,6 @@ sipp \
 	$MEDIAPORT_LOGIC \
 	-mi $PRIVATEIP \
 	-bg -trace_err -error_file "$LOG_PATH/error_$LOG_FILE.log" \
-	-trace_stat -stf "$STATS_FILE" -fd 1
+	-trace_stat -stf "$STATS_FILE" -fd 10
 
 	
