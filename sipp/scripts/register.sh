@@ -57,10 +57,12 @@ fi
 TLS_CERT="$BASE_DIR/sipp/tls/sipp.crt"
 TLS_KEY="$BASE_DIR/sipp/tls/sipp.key"
 TLS_OPTIONS=""
-
+SIP_PORT_ADD_ON=""
 if [ "$TRANSPORT" == "l1" ]; then
+	SIP_PORT_ADD_ON=":5061"
 	if [ -f "$TLS_CERT" ] && [ -f "$TLS_KEY" ]; then
-		TLS_OPTIONS="-tls_cert $TLS_CERT -tls_key $TLS_KEY"
+		# Add TLS version options - use TLS 1.2 for better compatibility
+		TLS_OPTIONS="-tls_cert $TLS_CERT -tls_key $TLS_KEY -tls_version 1.2"
 	else
 		echo "ERROR: TLS transport requested but certificates not found!"
 		echo "Expected: $TLS_CERT and $TLS_KEY"
@@ -70,7 +72,7 @@ if [ "$TRANSPORT" == "l1" ]; then
 fi
 
 sipp \
-	${SUT} \
+	${SUT}${SIP_PORT_ADD_ON} \
     -key expires 60 \
 	-r $[CALLRATE] \
 	-m $MAX_USERS \
