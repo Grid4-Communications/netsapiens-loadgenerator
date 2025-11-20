@@ -19,7 +19,7 @@ const fs = require('fs');
 const chokidar = require('chokidar');
 require('dotenv').config();
 
-const { parseStatsDirectory } = require('./lib/sipp-parser');
+const { parseStatsDirectory, parseSippStatsFile, parseStatsFilename } = require('./lib/sipp-parser');
 const {
   updateResponseTimeMetrics,
   updateStatsFileCount,
@@ -106,6 +106,13 @@ function updateMetrics() {
     }
 
     const files = fs.readdirSync(STATS_DIR).filter(f => f.endsWith('.csv'));
+
+    // Early exit if no files - skip all processing
+    if (files.length === 0) {
+      updateStatsFileCount(0);
+      return;
+    }
+
     const currentFiles = new Set();
     let parsedCount = 0;
     let skippedCount = 0;
@@ -130,8 +137,7 @@ function updateMetrics() {
           continue;
         }
 
-        // Parse only this file (not all files)
-        const { parseSippStatsFile, parseStatsFilename } = require('./lib/sipp-parser');
+        // Parse only this file (moved require to top of file)
         const stats = parseSippStatsFile(filePath);
 
         if (!stats) {
@@ -204,8 +210,7 @@ function processStatsFile(filePath) {
       return false;
     }
 
-    // Parse only this file
-    const { parseSippStatsFile, parseStatsFilename } = require('./lib/sipp-parser');
+    // Parse only this file (moved require to top of file)
     const stats = parseSippStatsFile(filePath);
 
     if (!stats) {
@@ -303,10 +308,15 @@ function startWatching() {
     console.error('Watcher error:', error);
   });
 
-  // Periodic full scan to catch any missed updates (less frequent)
+  // Periodic full scan to catch any missed updates
+  // Use longer interval when idle to reduce CPU usage
   setInterval(() => {
+    // Skip if no files have been seen yet
+    if (statsFileCache.size === 0) {
+      return;
+    }
     updateMetrics();
-  }, Math.max(UPDATE_INTERVAL * 1000, 30000)); // At least 30 seconds between full scans
+  }, Math.max(UPDATE_INTERVAL * 1000, 60000)); // At least 60 seconds between full scans
 
   return watcher;
 }
