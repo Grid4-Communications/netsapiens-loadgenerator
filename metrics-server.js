@@ -19,7 +19,7 @@ const fs = require('fs');
 const chokidar = require('chokidar');
 require('dotenv').config();
 
-const { parseStatsDirectory, parseSippStatsFile, parseStatsFilename, parseIncrementalLines } = require('./lib/sipp-parser');
+const { parseStatsDirectory, parseSippStatsFile, parseStatsFilename, parseLatestStats } = require('./lib/sipp-parser');
 const {
   updateResponseTimeMetrics,
   updateStatsFileCount,
@@ -45,7 +45,6 @@ let perfStats = {
   totalUpdateTime: 0,
   totalParseTime: 0,
   filesProcessed: 0,
-  linesProcessed: 0,
   filesDeleted: 0
 };
 
@@ -81,7 +80,6 @@ app.get('/health', (req, res) => {
       avgUpdateTimeMs: avgUpdateTime,
       avgParseTimeMs: avgParseTime,
       totalFilesProcessed: perfStats.filesProcessed,
-      totalLinesProcessed: perfStats.linesProcessed,
       filesDeleted: perfStats.filesDeleted
     }
   });
@@ -128,8 +126,8 @@ app.get('/', (req, res) => {
 });
 
 /**
- * Update metrics from all stats files using incremental parsing
- * Only parses new lines that have been added since last check
+ * Update metrics from all stats files
+ * Only parses the LAST line from each file (most recent stats)
  */
 function updateMetrics() {
   if (!ENABLE_METRICS) {
@@ -153,9 +151,8 @@ function updateMetrics() {
 
     const currentFiles = new Set();
     const now = Date.now();
-    let filesWithNewData = 0;
+    let filesUpdated = 0;
     let skippedCount = 0;
-    let totalLinesThisCycle = 0;
     let deletedFiles = 0;
 
     // Update file count metric
@@ -194,23 +191,19 @@ function updateMetrics() {
           continue;
         }
 
-        // Determine where to start reading
-        const startPos = cached ? cached.lastParsedSize : 0;
-
-        // Parse new lines incrementally
+        // Parse only the last line (most recent stats)
         const parseStart = Date.now();
-        const result = parseIncrementalLines(filePath, startPos);
+        const result = parseLatestStats(filePath);
         const parseTime = Date.now() - parseStart;
 
         perfStats.totalParseTime += parseTime;
         perfStats.filesProcessed++;
 
-        if (result.lines.length === 0) {
-          // Update cache even if no new lines parsed
+        if (!result.stats) {
+          // Update cache even if parsing failed
           statsFileCache.set(filePath, {
             mtime: fileStat.mtimeMs,
-            size: currentSize,
-            lastParsedSize: result.newSize
+            size: currentSize
           });
           skippedCount++;
           continue;
@@ -219,9 +212,8 @@ function updateMetrics() {
         const metadata = parseStatsFilename(filename);
         const { serverId, scenario } = metadata;
 
-        // Update metrics with ALL new lines (use the latest/last one for current metrics)
-        const latestStats = result.lines[result.lines.length - 1];
-        const { responseTimes } = latestStats;
+        // Update metrics with latest stats
+        const { responseTimes } = result.stats;
 
         if (responseTimes && responseTimes.count > 0) {
           const operation = scenario === 'register' ? 'register' : scenario;
@@ -231,19 +223,15 @@ function updateMetrics() {
         // Update cache
         statsFileCache.set(filePath, {
           mtime: fileStat.mtimeMs,
-          size: currentSize,
-          lastParsedSize: result.newSize
+          size: currentSize
         });
 
-        filesWithNewData++;
-        totalLinesThisCycle += result.lines.length;
-        perfStats.linesProcessed += result.lines.length;
+        filesUpdated++;
 
         // Log first few updates
-        if (filesWithNewData <= 3 && responseTimes && responseTimes.count > 0) {
+        if (filesUpdated <= 3 && responseTimes && responseTimes.count > 0) {
           console.log(
-            `Updated ${filename}: +${result.lines.length} lines, ` +
-            `server=${serverId}, scenario=${scenario}, ` +
+            `Updated ${filename}: server=${serverId}, scenario=${scenario}, ` +
             `count=${responseTimes.count}, avg=${responseTimes.average.toFixed(3)}s, ` +
             `p95=${responseTimes.percentiles.p95.toFixed(3)}s`
           );
@@ -265,11 +253,10 @@ function updateMetrics() {
     perfStats.updateCycles++;
     perfStats.totalUpdateTime += cycleTime;
 
-    if (filesWithNewData > 0 || deletedFiles > 0 || (Date.now() - lastUpdateTime) > 60000) {
+    if (filesUpdated > 0 || deletedFiles > 0 || (Date.now() - lastUpdateTime) > 60000) {
       console.log(
-        `Cycle: ${filesWithNewData} updated (+${totalLinesThisCycle} lines), ` +
-        `${skippedCount} skipped, ${deletedFiles} deleted, ${files.length} total, ` +
-        `${cycleTime}ms (avg: ${(perfStats.totalUpdateTime / perfStats.updateCycles).toFixed(1)}ms)`
+        `Cycle: ${filesUpdated} updated, ${skippedCount} skipped, ${deletedFiles} deleted, ` +
+        `${files.length} total, ${cycleTime}ms (avg: ${(perfStats.totalUpdateTime / perfStats.updateCycles).toFixed(1)}ms)`
       );
     }
 
@@ -434,7 +421,7 @@ function startServer() {
   console.log(`Stats Directory: ${STATS_DIR}`);
   console.log(`Update Interval: ${UPDATE_INTERVAL}s`);
   console.log(`File Cleanup Age: ${FILE_CLEANUP_AGE}s (${Math.floor(FILE_CLEANUP_AGE / 60)}min)`);
-  console.log(`Incremental Parsing: ENABLED`);
+  console.log(`Parse Mode: Last line only (fast)`);
   console.log('=================================\n');
 
   // Start watching stats directory
