@@ -211,14 +211,25 @@ if [ "$TRANSPORT" == "l1" ]; then
     SIP_PORT_ADD_ON=":5061"
 	if [ -f "$TLS_CERT" ] && [ -f "$TLS_KEY" ]; then
 		# Add TLS version options - use TLS 1.2 for better compatibility
-		# Include system CA bundle for verifying server certificates
+		# Note: We only use -tls_ca if we also have a CRL file, otherwise SIPp will fail
 		TLS_CA_PATH=""
-		if [ -f "/etc/ssl/certs/ca-certificates.crt" ]; then
-			TLS_CA_PATH="-tls_ca /etc/ssl/certs/ca-certificates.crt"
-		elif [ -f "/etc/pki/tls/certs/ca-bundle.crt" ]; then
-			TLS_CA_PATH="-tls_ca /etc/pki/tls/certs/ca-bundle.crt"
+		TLS_CRL_PATH=""
+
+		# Check if CRL file exists first
+		if [ -f "$BASE_DIR/sipp/tls/sipp.crl" ]; then
+			TLS_CRL_PATH="-tls_crl $BASE_DIR/sipp/tls/sipp.crl"
+
+			# Only add CA file if we have CRL (to avoid CRL-related errors)
+			if [ -f "/etc/ssl/certs/ca-certificates.crt" ]; then
+				TLS_CA_PATH="-tls_ca /etc/ssl/certs/ca-certificates.crt"
+			elif [ -f "/etc/pki/tls/certs/ca-bundle.crt" ]; then
+				TLS_CA_PATH="-tls_ca /etc/pki/tls/certs/ca-bundle.crt"
+			fi
 		fi
-		TLS_OPTIONS="-tls_cert $TLS_CERT -tls_key $TLS_KEY -tls_version 1.2 $TLS_CA_PATH"
+
+		# Don't force TLS version - let SIPp autonegotiate (default behavior)
+		# This allows SIPp to negotiate TLS 1.3 if the server supports it
+		TLS_OPTIONS="-tls_cert $TLS_CERT -tls_key $TLS_KEY $TLS_CA_PATH $TLS_CRL_PATH"
 	else
 		echo "ERROR: TLS transport requested but certificates not found!"
 		echo "Expected: $TLS_CERT and $TLS_KEY"
@@ -243,6 +254,6 @@ sipp \
 	-key media_ip $PUBLICIP \
 	-bg \
     -trace_err \
-    -trace_stat -stf "$STATS_FILE" -fd 10 \
+    -trace_stat -stf "$STATS_FILE" -fd 30 \
     > "$LOG_FILE" 2>&1
 
