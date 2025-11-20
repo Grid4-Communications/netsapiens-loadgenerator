@@ -174,12 +174,11 @@ else
     LOG_FILE="$BASE_DIR/sipp/scripts/inbound_${TIMEZONE}.log"
 fi
 
-LOG_FILE_BASE=$(basename "$LOG_FILE")
 # Create stats filename with server ID if provided
 if [ -n "$SERVER_ID" ]; then
-    STATS_FILE="${STATS_PATH}/${SERVER_ID}_invite_${LOG_FILE_BASE}_$$.csv"
+    STATS_FILE="${STATS_PATH}/${SERVER_ID}_invite_${TIMEZONE}_$$.csv"
 else
-    STATS_FILE="${STATS_PATH}/invite_${LOG_FILE_BASE}_$$.csv"
+    STATS_FILE="${STATS_PATH}/invite_${TIMEZONE}_$$.csv"
 fi
 
 sipp \
