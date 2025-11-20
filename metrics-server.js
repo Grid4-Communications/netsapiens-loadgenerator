@@ -275,26 +275,38 @@ async function updateMetrics() {
         const metadata = parseStatsFilename(filename);
         const { serverId, scenario } = metadata;
 
-        // Update metrics with latest stats
-        const { responseTimes } = result.stats;
+        // Update metrics for each operation
+        const { responseTimesByOperation } = result.stats;
 
-        if (responseTimes && responseTimes.count > 0) {
-          const operation = scenario === 'register' ? 'register' : scenario;
-          updateResponseTimeMetrics(serverId, scenario, operation, responseTimes);
+        if (responseTimesByOperation && Object.keys(responseTimesByOperation).length > 0) {
+          let hasData = false;
 
-          // Log first few updates
-          if (filesUpdated < 3) {
+          for (const [operation, responseTimes] of Object.entries(responseTimesByOperation)) {
+            if (responseTimes && responseTimes.count > 0) {
+              updateResponseTimeMetrics(serverId, scenario, operation, responseTimes);
+              hasData = true;
+
+              // Log first few updates
+              if (filesUpdated < 3) {
+                console.log(
+                  `✓ Updated ${filename}: server=${serverId}, scenario=${scenario}, ` +
+                  `operation=${operation}, samples=${responseTimes.count}, ` +
+                  `avg=${responseTimes.average.toFixed(3)}s, p95=${responseTimes.percentiles.p95.toFixed(3)}s`
+                );
+              }
+            }
+          }
+
+          if (!hasData && filesUpdated < 3) {
             console.log(
-              `✓ Updated ${filename}: server=${serverId}, scenario=${scenario}, ` +
-              `samples=${responseTimes.count}, avg=${responseTimes.average.toFixed(3)}s, ` +
-              `p95=${responseTimes.percentiles.p95.toFixed(3)}s`
+              `⚠ Skipped ${filename}: no response time data in any operation`
             );
           }
         } else {
           // Debug: Log why we're not updating metrics
           if (filesUpdated < 3) {
             console.log(
-              `⚠ Skipped ${filename}: no response time data (count=${responseTimes?.count || 0})`
+              `⚠ Skipped ${filename}: no operations found`
             );
           }
         }

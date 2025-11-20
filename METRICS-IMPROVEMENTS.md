@@ -12,6 +12,17 @@ This update dramatically reduces CPU usage and improves efficiency of the metric
 - Avoids parsing thousands of intermediate lines unnecessarily
 - Dramatically reduces CPU usage (from parsing 800k+ lines to ~500 lines)
 
+### 1b. **Per-Operation Metrics**
+- Tracks response times separately for each SIP operation:
+  - **register**: Initial SIP REGISTER response time
+  - **reregister**: Re-REGISTER response time (periodic refresh)
+  - **invite**: INVITE response time (inbound call setup)
+  - **subscribe**: SUBSCRIBE response time (presence, MWI, etc.)
+  - **notify**: NOTIFY response time (event notifications)
+- Automatically detects and normalizes SIPp operation names (e.g., "1" → "invite", "2" → "subscribe")
+- Allows monitoring different aspects of VoIP performance independently
+- All operations reported with separate Prometheus labels
+
 ### 2. **Automatic File Cleanup**
 - Deletes CSV files not modified in 10 minutes (configurable)
 - Prevents unlimited disk space growth
