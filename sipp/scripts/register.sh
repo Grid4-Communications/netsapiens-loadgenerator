@@ -53,12 +53,29 @@ else
 	MEDIAPORT_LOGIC=" -mp $MEDIA_PORT "
 fi
 
+# TLS certificate configuration (only used when TRANSPORT=l1)
+TLS_CERT="$BASE_DIR/sipp/tls/sipp.crt"
+TLS_KEY="$BASE_DIR/sipp/tls/sipp.key"
+TLS_OPTIONS=""
+
+if [ "$TRANSPORT" == "l1" ]; then
+	if [ -f "$TLS_CERT" ] && [ -f "$TLS_KEY" ]; then
+		TLS_OPTIONS="-tls_cert $TLS_CERT -tls_key $TLS_KEY"
+	else
+		echo "ERROR: TLS transport requested but certificates not found!"
+		echo "Expected: $TLS_CERT and $TLS_KEY"
+		echo "Please run: $BASE_DIR/sipp/scripts/generate_tls_certs.sh"
+		exit 1
+	fi
+fi
+
 sipp \
 	${SUT} \
     -key expires 60 \
 	-r $[CALLRATE] \
 	-m $MAX_USERS \
 	-t $TRANSPORT \
+	$TLS_OPTIONS \
 	-p $PORT \
 	-cp $CONTROL_PORT \
 	-rtp_echo \

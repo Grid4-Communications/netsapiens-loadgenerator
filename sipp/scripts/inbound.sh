@@ -202,6 +202,22 @@ else
     STATS_FILE="${STATS_PATH}/inbound_${TRANSPORT}_${TZ_CLEAN}_$$.csv"
 fi
 
+# TLS certificate configuration (only used when TRANSPORT=l1)
+TLS_CERT="$BASE_DIR/sipp/tls/sipp.crt"
+TLS_KEY="$BASE_DIR/sipp/tls/sipp.key"
+TLS_OPTIONS=""
+
+if [ "$TRANSPORT" == "l1" ]; then
+	if [ -f "$TLS_CERT" ] && [ -f "$TLS_KEY" ]; then
+		TLS_OPTIONS="-tls_cert $TLS_CERT -tls_key $TLS_KEY"
+	else
+		echo "ERROR: TLS transport requested but certificates not found!"
+		echo "Expected: $TLS_CERT and $TLS_KEY"
+		echo "Please run: $BASE_DIR/sipp/scripts/generate_tls_certs.sh"
+		exit 1
+	fi
+fi
+
 sipp \
 	${SUT} \
     -r "$CALLRATE" \
@@ -212,6 +228,7 @@ sipp \
 	-watchdog_minor_threshold 920000 \
 	-watchdog_major_threshold 9200000 \
 	-t $TRANSPORT \
+	$TLS_OPTIONS \
     -inf $BASE_DIR/sipp/csv/random_caller_ids.csv \
 	-recv_timeout 60000 \
 	-key media_ip $PUBLICIP \
