@@ -291,7 +291,7 @@ async function updateMetrics() {
                 console.log(
                   `✓ Updated ${filename}: server=${serverId}, scenario=${scenario}, ` +
                   `operation=${operation}, samples=${responseTimes.count}, ` +
-                  `avg=${responseTimes.average.toFixed(3)}s, p95=${responseTimes.percentiles.p95.toFixed(3)}s`
+                  `avg=${responseTimes.average.toFixed(4)}s, p95=${responseTimes.percentiles.p95.toFixed(4)}s`
                 );
               }
             }

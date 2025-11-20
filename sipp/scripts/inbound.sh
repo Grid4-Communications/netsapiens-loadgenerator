@@ -178,9 +178,9 @@ TZ_CLEAN=$(echo "$TIMEZONE" | tr ' /' '__' | tr -cd '[:alnum:]')
 
 # Create stats filename with server ID if provided
 if [ -n "$SERVER_ID" ]; then
-    STATS_FILE="${STATS_PATH}/${SERVER_ID}_invite_${TZ_CLEAN}_$$.csv"
+    STATS_FILE="${STATS_PATH}/${SERVER_ID}_inbound_${TZ_CLEAN}_$$.csv"
 else
-    STATS_FILE="${STATS_PATH}/invite_${TZ_CLEAN}_$$.csv"
+    STATS_FILE="${STATS_PATH}/inbound_${TZ_CLEAN}_$$.csv"
 fi
 
 sipp \
