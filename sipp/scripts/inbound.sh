@@ -87,7 +87,6 @@ if [ "$SERVER_ID" == "all" ]; then
         echo "Finished running for all servers"
         echo "=========================================="
         exit 0
-    fi
 
     echo "Multi-server mode: Using server '$SERVER_ID'"
 fi
