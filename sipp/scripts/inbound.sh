@@ -52,7 +52,8 @@ if [ "$2" == "--server" ] && [ -n "$3" ]; then
             echo ""
             echo ">>> Starting inbound calls for server: $SID (timezone: $TIMEZONE)"
             echo "---"
-            $0 "$TIMEZONE" --server "$SID"
+            $0 "$TIMEZONE" --server "$SID" 
+            
             RESULT=$?
             if [ $RESULT -ne 0 ]; then
                 echo "Warning: Inbound calls for server '$SID' failed with exit code $RESULT"
@@ -173,11 +174,12 @@ else
     LOG_FILE="$BASE_DIR/sipp/scripts/inbound_${TIMEZONE}.log"
 fi
 
+LOG_FILE_BASE=$(basename "$LOG_FILE")
 # Create stats filename with server ID if provided
 if [ -n "$SERVER_ID" ]; then
-    STATS_FILE="${STATS_PATH}/${SERVER_ID}_invite_${LOG_FILE}_$$.csv"
+    STATS_FILE="${STATS_PATH}/${SERVER_ID}_invite_${LOG_FILE_BASE}_$$.csv"
 else
-    STATS_FILE="${STATS_PATH}/invite_${LOG_FILE}_$$.csv"
+    STATS_FILE="${STATS_PATH}/invite_${LOG_FILE_BASE}_$$.csv"
 fi
 
 sipp \
