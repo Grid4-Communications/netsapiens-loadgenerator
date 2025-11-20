@@ -68,6 +68,47 @@ if [ $? -eq 0 ]; then
 
     echo "Permissions set:"
     ls -l "$CERT_FILE" "$KEY_FILE"
+    echo ""
+
+    # Generate empty CRL file for SIPp
+    echo "Generating empty CRL (Certificate Revocation List) file..."
+    CRL_FILE="$TLS_DIR/sipp.crl"
+
+    # Create temporary files needed by openssl ca command
+    touch /tmp/index.txt.sipp
+    echo "00" > /tmp/crlnumber.sipp
+
+    # Generate the CRL
+    openssl ca -gencrl \
+        -keyfile "$KEY_FILE" \
+        -cert "$CERT_FILE" \
+        -out "$CRL_FILE" \
+        -config <(cat <<EOF
+[ ca ]
+default_ca = CA_default
+
+[ CA_default ]
+database = /tmp/index.txt.sipp
+crlnumber = /tmp/crlnumber.sipp
+default_md = sha256
+default_days = 365
+default_crl_days = 30
+
+[ crl_ext ]
+authorityKeyIdentifier=keyid:always
+EOF
+) 2>/dev/null
+
+    # Clean up temp files
+    rm -f /tmp/index.txt.sipp /tmp/crlnumber.sipp /tmp/crlnumber.sipp.old
+
+    if [ -f "$CRL_FILE" ]; then
+        chmod 644 "$CRL_FILE"
+        echo "✓ CRL file created: $CRL_FILE"
+    else
+        echo "⚠ CRL file creation failed, but certificates are still usable"
+    fi
+
 else
     echo ""
     echo "ERROR: Failed to generate TLS certificates"

@@ -211,7 +211,14 @@ if [ "$TRANSPORT" == "l1" ]; then
     SIP_PORT_ADD_ON=":5061"
 	if [ -f "$TLS_CERT" ] && [ -f "$TLS_KEY" ]; then
 		# Add TLS version options - use TLS 1.2 for better compatibility
-		TLS_OPTIONS="-tls_cert $TLS_CERT -tls_key $TLS_KEY -tls_version 1.2"
+		# Include system CA bundle for verifying server certificates
+		TLS_CA_PATH=""
+		if [ -f "/etc/ssl/certs/ca-certificates.crt" ]; then
+			TLS_CA_PATH="-tls_ca /etc/ssl/certs/ca-certificates.crt"
+		elif [ -f "/etc/pki/tls/certs/ca-bundle.crt" ]; then
+			TLS_CA_PATH="-tls_ca /etc/pki/tls/certs/ca-bundle.crt"
+		fi
+		TLS_OPTIONS="-tls_cert $TLS_CERT -tls_key $TLS_KEY -tls_version 1.2 $TLS_CA_PATH"
 	else
 		echo "ERROR: TLS transport requested but certificates not found!"
 		echo "Expected: $TLS_CERT and $TLS_KEY"
