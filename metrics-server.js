@@ -281,6 +281,22 @@ async function updateMetrics() {
         if (responseTimes && responseTimes.count > 0) {
           const operation = scenario === 'register' ? 'register' : scenario;
           updateResponseTimeMetrics(serverId, scenario, operation, responseTimes);
+
+          // Log first few updates
+          if (filesUpdated < 3) {
+            console.log(
+              `✓ Updated ${filename}: server=${serverId}, scenario=${scenario}, ` +
+              `samples=${responseTimes.count}, avg=${responseTimes.average.toFixed(3)}s, ` +
+              `p95=${responseTimes.percentiles.p95.toFixed(3)}s`
+            );
+          }
+        } else {
+          // Debug: Log why we're not updating metrics
+          if (filesUpdated < 3) {
+            console.log(
+              `⚠ Skipped ${filename}: no response time data (count=${responseTimes?.count || 0})`
+            );
+          }
         }
 
         // Update cache
@@ -290,15 +306,6 @@ async function updateMetrics() {
         });
 
         filesUpdated++;
-
-        // Log first few updates
-        if (filesUpdated <= 3 && responseTimes && responseTimes.count > 0) {
-          console.log(
-            `Updated ${filename}: server=${serverId}, scenario=${scenario}, ` +
-            `count=${responseTimes.count}, avg=${responseTimes.average.toFixed(3)}s, ` +
-            `p95=${responseTimes.percentiles.p95.toFixed(3)}s`
-          );
-        }
       } catch (err) {
         console.error(`Error processing file ${filename}:`, err.message);
       }
