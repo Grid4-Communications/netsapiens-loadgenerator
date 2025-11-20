@@ -1,29 +1,48 @@
 #!/bin/bash
 
 # Multi-server support with backward compatibility
-# Usage: inbound.sh <timezone> [--server <server-id>]
-# Example: inbound.sh US_Eastern --server prod1
+# Usage: inbound.sh <timezone> [<transport>] [--server <server-id>]
+# Examples:
+#   inbound.sh US_Eastern                    # Uses default UDP (u1)
+#   inbound.sh US_Eastern t1                 # Uses TCP
+#   inbound.sh US_Eastern --server prod1     # Uses default UDP with server prod1
+#   inbound.sh US_Eastern u1 --server prod1  # Uses UDP with server prod1
+# Transport options: u1 (UDP - default), t1 (TCP), l1 (TLS)
 
 BASE_DIR="/usr/local/NetSapiens/netsapiens-loadgenerator"
 source $BASE_DIR/.env
 
-# Parse arguments: timezone is first, --server is optional
+# Parse arguments: timezone is first, transport is optional (defaults to u1), --server is optional
 TIMEZONE="$1"
+TRANSPORT=""
 SERVER_ID=""
 
 if [ -z "$TIMEZONE" ]; then
     echo "Error: Timezone argument required"
-    echo "Usage: inbound.sh <timezone> [--server <server-id>]"
-    echo "Example: inbound.sh US_Eastern --server prod1"
+    echo "Usage: inbound.sh <timezone> [<transport>] [--server <server-id>]"
+    echo "Example: inbound.sh US_Eastern u1 --server prod1"
+    echo "Transport options: u1 (UDP - default), t1 (TCP), l1 (TLS)"
     exit 1
 fi
 
-# Check for --server flag in second position
-if [ "$2" == "--server" ] && [ -n "$3" ]; then
+# Check if second argument is --server (no transport provided)
+if [ "$2" == "--server" ]; then
+    TRANSPORT="u1"  # Default to UDP
     SERVER_ID="$3"
+# Check if third argument is --server (transport was provided)
+elif [ "$3" == "--server" ] && [ -n "$4" ]; then
+    TRANSPORT="$2"
+    SERVER_ID="$4"
+# Second argument provided but not --server (must be transport)
+elif [ -n "$2" ]; then
+    TRANSPORT="$2"
+# No second argument at all
+else
+    TRANSPORT="u1"  # Default to UDP
+fi
 
-    # Handle --server all: loop through all servers in servers.json
-    if [ "$SERVER_ID" == "all" ]; then
+# Handle --server all: loop through all servers in servers.json
+if [ "$SERVER_ID" == "all" ]; then
         if [ ! -f "$BASE_DIR/servers.json" ]; then
             echo "Error: servers.json not found. Required for --server all"
             exit 1
@@ -45,14 +64,15 @@ if [ "$2" == "--server" ] && [ -n "$3" ]; then
         echo "=========================================="
         echo "Running inbound for ALL servers in servers.json"
         echo "Timezone: $TIMEZONE"
+        echo "Transport: $TRANSPORT"
         echo "=========================================="
 
         # Loop through each server and call this script recursively
         for SID in $SERVER_IDS; do
             echo ""
-            echo ">>> Starting inbound calls for server: $SID (timezone: $TIMEZONE)"
+            echo ">>> Starting inbound calls for server: $SID (timezone: $TIMEZONE, transport: $TRANSPORT)"
             echo "---"
-            $0 "$TIMEZONE" --server "$SID" 
+            $0 "$TIMEZONE" "$TRANSPORT" --server "$SID" 
             
             RESULT=$?
             if [ $RESULT -ne 0 ]; then
@@ -176,11 +196,11 @@ fi
 
 TZ_CLEAN=$(echo "$TIMEZONE" | tr ' /' '__' | tr -cd '[:alnum:]')
 
-# Create stats filename with server ID if provided
+# Create stats filename with server ID and transport
 if [ -n "$SERVER_ID" ]; then
-    STATS_FILE="${STATS_PATH}/${SERVER_ID}_inbound_${TZ_CLEAN}_$$.csv"
+    STATS_FILE="${STATS_PATH}/${SERVER_ID}_inbound_${TRANSPORT}_${TZ_CLEAN}_$$.csv"
 else
-    STATS_FILE="${STATS_PATH}/inbound_${TZ_CLEAN}_$$.csv"
+    STATS_FILE="${STATS_PATH}/inbound_${TRANSPORT}_${TZ_CLEAN}_$$.csv"
 fi
 
 sipp \
@@ -192,7 +212,7 @@ sipp \
 	-watchdog_interval 900000 \
 	-watchdog_minor_threshold 920000 \
 	-watchdog_major_threshold 9200000 \
-	-t u1 \
+	-t $TRANSPORT \
     -inf $BASE_DIR/sipp/csv/random_caller_ids.csv \
 	-recv_timeout 60000 \
 	-key media_ip $PUBLICIP \

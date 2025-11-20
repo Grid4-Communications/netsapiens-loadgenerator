@@ -273,7 +273,7 @@ async function updateMetrics() {
         }
 
         const metadata = parseStatsFilename(filename);
-        const { serverId, scenario } = metadata;
+        const { serverId, scenario, transport } = metadata;
 
         // Update metrics for each operation
         const { responseTimesByOperation } = result.stats;
@@ -283,14 +283,14 @@ async function updateMetrics() {
 
           for (const [operation, responseTimes] of Object.entries(responseTimesByOperation)) {
             if (responseTimes && responseTimes.count > 0) {
-              updateResponseTimeMetrics(serverId, scenario, operation, responseTimes);
+              updateResponseTimeMetrics(serverId, scenario, operation, transport, responseTimes);
               hasData = true;
 
               // Log first few updates
               if (filesUpdated < 3) {
                 console.log(
                   `✓ Updated ${filename}: server=${serverId}, scenario=${scenario}, ` +
-                  `operation=${operation}, samples=${responseTimes.count}, ` +
+                  `transport=${transport}, operation=${operation}, samples=${responseTimes.count}, ` +
                   `avg=${responseTimes.average.toFixed(4)}s, p95=${responseTimes.percentiles.p95.toFixed(4)}s`
                 );
               }
@@ -379,7 +379,7 @@ function processStatsFile(filePath) {
     }
 
     const metadata = parseStatsFilename(filename);
-    const { serverId, scenario } = metadata;
+    const { serverId, scenario, transport } = metadata;
 
     // Update cache
     statsFileCache.set(filePath, lastModified);
@@ -389,7 +389,7 @@ function processStatsFile(filePath) {
 
     if (responseTimes && responseTimes.count > 0) {
       const operation = scenario === 'register' ? 'register' : scenario;
-      updateResponseTimeMetrics(serverId, scenario, operation, responseTimes);
+      updateResponseTimeMetrics(serverId, scenario, operation, transport, responseTimes);
       return true;
     }
 

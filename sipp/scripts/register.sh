@@ -35,11 +35,11 @@ ulimit -n 65536
 LOG_PATH="$BASE_DIR/sipp/scripts"
 STATS_PATH="$BASE_DIR/sipp/stats"
 
-# Create stats filename with server ID if provided
+# Create stats filename with server ID and transport
 if [ -n "$SERVER_ID" ]; then
-    STATS_FILE="${STATS_PATH}/${SERVER_ID}_register_${LOG_FILE}_$$.csv"
+    STATS_FILE="${STATS_PATH}/${SERVER_ID}_register_${TRANSPORT}_${LOG_FILE}_$$.csv"
 else
-    STATS_FILE="${STATS_PATH}/register_${LOG_FILE}_$$.csv"
+    STATS_FILE="${STATS_PATH}/register_${TRANSPORT}_${LOG_FILE}_$$.csv"
 fi
 
 echo "`date` - [start] $INPUTFILE $PORT $MEDIA_PORT $CONTROL_PORT (max users $MAX_USERS, pct users is $PCT_USERS) stats: $STATS_FILE" >> "$LOG_PATH/error_$LOG_FILE.log"
