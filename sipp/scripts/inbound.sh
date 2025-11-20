@@ -102,15 +102,11 @@ fi
 echo "Target server: $SUT"
 echo "Input file: $INPUTFILE"
 
+LOG_FILE=$(basename "$INPUTFILE")
 STATS_PATH="$BASE_DIR/sipp/stats"
 
 
-# Create stats filename with server ID if provided
-if [ -n "$SERVER_ID" ]; then
-    STATS_FILE="${STATS_PATH}/${SERVER_ID}_invite_${LOG_FILE}_$$.csv"
-else
-    STATS_FILE="${STATS_PATH}/invite_${LOG_FILE}_$$.csv"
-fi
+
 
 if [ ! -f "$INPUTFILE" ]; then
 	echo "Error: File $INPUTFILE does not exist"
@@ -175,6 +171,13 @@ if [ -n "$SERVER_ID" ]; then
     LOG_FILE="$BASE_DIR/sipp/scripts/inbound_${SERVER_ID}_${TIMEZONE}.log"
 else
     LOG_FILE="$BASE_DIR/sipp/scripts/inbound_${TIMEZONE}.log"
+fi
+
+# Create stats filename with server ID if provided
+if [ -n "$SERVER_ID" ]; then
+    STATS_FILE="${STATS_PATH}/${SERVER_ID}_invite_${LOG_FILE}_$$.csv"
+else
+    STATS_FILE="${STATS_PATH}/invite_${LOG_FILE}_$$.csv"
 fi
 
 sipp \
