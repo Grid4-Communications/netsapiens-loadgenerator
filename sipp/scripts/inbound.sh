@@ -174,11 +174,14 @@ else
     LOG_FILE="$BASE_DIR/sipp/scripts/inbound_${TIMEZONE}.log"
 fi
 
+//replace spaces and special characters in timezone for stats filename
+TZ_CLEAN=$(echo "$TIMEZONE" | tr ' /' '__' | tr -cd '[:alnum:]')
+
 # Create stats filename with server ID if provided
 if [ -n "$SERVER_ID" ]; then
-    STATS_FILE="${STATS_PATH}/${SERVER_ID}_invite_${TIMEZONE}_$$.csv"
+    STATS_FILE="${STATS_PATH}/${SERVER_ID}_invite_${TZ_CLEAN}_$$.csv"
 else
-    STATS_FILE="${STATS_PATH}/invite_${TIMEZONE}_$$.csv"
+    STATS_FILE="${STATS_PATH}/invite_${TZ_CLEAN}_$$.csv"
 fi
 
 sipp \
