@@ -34,6 +34,7 @@ const STATS_DIR = process.env.STATS_DIR || path.join(BASE_DIR, 'sipp', 'stats');
 const UPDATE_INTERVAL = parseInt(process.env.UPDATE_INTERVAL) || 10; // seconds (default 10)
 const FILE_CLEANUP_AGE = parseInt(process.env.FILE_CLEANUP_AGE) || 600; // seconds (default 10 min)
 const ENABLE_METRICS = process.env.ENABLE_METRICS !== 'false'; // Set to 'false' to disable all processing
+const TEXTFILE_PATH = process.env.TEXTFILE_PATH || '/usr/local/NetSapiens/agent/textfile_collector/sipp.prom';
 
 // State tracking
 let lastUpdateTime = Date.now();
@@ -126,10 +127,72 @@ app.get('/', (req, res) => {
 });
 
 /**
+ * Write metrics to textfile for Prometheus Node Exporter textfile collector
+ * Includes both SIPp metrics and performance stats
+ */
+async function writeMetricsToFile() {
+  try {
+    // Get main metrics
+    const metricsContent = await getMetrics();
+
+    // Add performance metrics
+    const avgUpdateTime = perfStats.updateCycles > 0
+      ? (perfStats.totalUpdateTime / perfStats.updateCycles).toFixed(2)
+      : 0;
+    const avgParseTime = perfStats.filesProcessed > 0
+      ? (perfStats.totalParseTime / perfStats.filesProcessed).toFixed(2)
+      : 0;
+
+    const performanceMetrics = `
+# HELP sipp_metrics_update_cycles_total Total number of update cycles completed
+# TYPE sipp_metrics_update_cycles_total counter
+sipp_metrics_update_cycles_total ${perfStats.updateCycles}
+
+# HELP sipp_metrics_update_time_seconds_average Average update cycle time in seconds
+# TYPE sipp_metrics_update_time_seconds_average gauge
+sipp_metrics_update_time_seconds_average ${(avgUpdateTime / 1000).toFixed(6)}
+
+# HELP sipp_metrics_parse_time_seconds_average Average parse time per file in seconds
+# TYPE sipp_metrics_parse_time_seconds_average gauge
+sipp_metrics_parse_time_seconds_average ${(avgParseTime / 1000).toFixed(6)}
+
+# HELP sipp_metrics_files_processed_total Total number of files processed
+# TYPE sipp_metrics_files_processed_total counter
+sipp_metrics_files_processed_total ${perfStats.filesProcessed}
+
+# HELP sipp_metrics_files_deleted_total Total number of old files deleted
+# TYPE sipp_metrics_files_deleted_total counter
+sipp_metrics_files_deleted_total ${perfStats.filesDeleted}
+
+# HELP sipp_metrics_cache_size Current number of files in cache
+# TYPE sipp_metrics_cache_size gauge
+sipp_metrics_cache_size ${statsFileCache.size}
+`;
+
+    const fullContent = metricsContent + performanceMetrics;
+
+    // Only write if directory exists (don't create it)
+    const dir = path.dirname(TEXTFILE_PATH);
+    if (!fs.existsSync(dir)) {
+      // Directory doesn't exist, skip writing
+      return;
+    }
+
+    // Atomic write: write to temp file, then rename
+    const tempPath = TEXTFILE_PATH + '.tmp';
+    fs.writeFileSync(tempPath, fullContent, 'utf-8');
+    fs.renameSync(tempPath, TEXTFILE_PATH);
+
+  } catch (error) {
+    console.error('Error writing metrics to file:', error.message);
+  }
+}
+
+/**
  * Update metrics from all stats files
  * Only parses the LAST line from each file (most recent stats)
  */
-function updateMetrics() {
+async function updateMetrics() {
   if (!ENABLE_METRICS) {
     return; // Completely skip processing if disabled
   }
@@ -259,6 +322,9 @@ function updateMetrics() {
         `${files.length} total, ${cycleTime}ms (avg: ${(perfStats.totalUpdateTime / perfStats.updateCycles).toFixed(1)}ms)`
       );
     }
+
+    // Write metrics to textfile for Node Exporter
+    await writeMetricsToFile();
 
     lastUpdateTime = Date.now();
   } catch (error) {
@@ -422,7 +488,17 @@ function startServer() {
   console.log(`Update Interval: ${UPDATE_INTERVAL}s`);
   console.log(`File Cleanup Age: ${FILE_CLEANUP_AGE}s (${Math.floor(FILE_CLEANUP_AGE / 60)}min)`);
   console.log(`Parse Mode: Last line only (fast)`);
+  console.log(`Textfile Export: ${TEXTFILE_PATH}`);
   console.log('=================================\n');
+
+  // Check if textfile export directory exists
+  const textfileDir = path.dirname(TEXTFILE_PATH);
+  if (!fs.existsSync(textfileDir)) {
+    console.log(`⚠️  Textfile directory not found: ${textfileDir}`);
+    console.log(`   Metrics will not be exported to file until directory is created\n`);
+  } else {
+    console.log(`✓ Textfile directory exists, will export to: ${TEXTFILE_PATH}\n`);
+  }
 
   // Start watching stats directory
   const watcher = startWatching();
