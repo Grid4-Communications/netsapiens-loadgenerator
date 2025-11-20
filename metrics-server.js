@@ -32,10 +32,19 @@ const PORT = process.env.METRICS_PORT || 9090;
 const BASE_DIR = process.env.BASE_DIR || __dirname;
 const STATS_DIR = process.env.STATS_DIR || path.join(BASE_DIR, 'sipp', 'stats');
 const UPDATE_INTERVAL = parseInt(process.env.UPDATE_INTERVAL) || 5; // seconds
+const ENABLE_METRICS = process.env.ENABLE_METRICS !== 'false'; // Set to 'false' to disable all processing
 
 // State tracking
 let lastUpdateTime = Date.now();
 let statsFileCache = new Map(); // Track stats files and their last modification time
+
+// Performance tracking
+let perfStats = {
+  updateCycles: 0,
+  totalUpdateTime: 0,
+  totalParseTime: 0,
+  filesProcessed: 0
+};
 
 /**
  * Initialize Express app
@@ -46,12 +55,26 @@ const app = express();
  * Health check endpoint
  */
 app.get('/health', (req, res) => {
+  const avgUpdateTime = perfStats.updateCycles > 0
+    ? (perfStats.totalUpdateTime / perfStats.updateCycles).toFixed(2)
+    : 0;
+  const avgParseTime = perfStats.filesProcessed > 0
+    ? (perfStats.totalParseTime / perfStats.filesProcessed).toFixed(2)
+    : 0;
+
   res.json({
     status: 'ok',
     uptime: process.uptime(),
     lastUpdate: new Date(lastUpdateTime).toISOString(),
     statsDirectory: STATS_DIR,
-    activeFiles: statsFileCache.size
+    activeFiles: statsFileCache.size,
+    enabled: ENABLE_METRICS,
+    performance: {
+      updateCycles: perfStats.updateCycles,
+      avgUpdateTimeMs: avgUpdateTime,
+      avgParseTimeMs: avgParseTime,
+      totalFilesProcessed: perfStats.filesProcessed
+    }
   });
 });
 
@@ -100,6 +123,12 @@ app.get('/', (req, res) => {
  * Only parses files that have been modified since last check
  */
 function updateMetrics() {
+  if (!ENABLE_METRICS) {
+    return; // Completely skip processing if disabled
+  }
+
+  const cycleStart = Date.now();
+
   try {
     if (!fs.existsSync(STATS_DIR)) {
       return;
@@ -138,7 +167,12 @@ function updateMetrics() {
         }
 
         // Parse only this file (moved require to top of file)
+        const parseStart = Date.now();
         const stats = parseSippStatsFile(filePath);
+        const parseTime = Date.now() - parseStart;
+
+        perfStats.totalParseTime += parseTime;
+        perfStats.filesProcessed++;
 
         if (!stats) {
           continue;
@@ -182,13 +216,22 @@ function updateMetrics() {
       }
     }
 
+    const cycleTime = Date.now() - cycleStart;
+    perfStats.updateCycles++;
+    perfStats.totalUpdateTime += cycleTime;
+
     if (parsedCount > 0 || (Date.now() - lastUpdateTime) > 60000) {
-      console.log(`Update cycle: ${parsedCount} parsed, ${skippedCount} skipped, ${files.length} total files`);
+      console.log(
+        `Update cycle: ${parsedCount} parsed, ${skippedCount} skipped, ${files.length} total files, ` +
+        `cycle took ${cycleTime}ms (avg: ${(perfStats.totalUpdateTime / perfStats.updateCycles).toFixed(1)}ms)`
+      );
     }
 
     lastUpdateTime = Date.now();
   } catch (error) {
     console.error('Error updating metrics:', error);
+    perfStats.updateCycles++;
+    perfStats.totalUpdateTime += (Date.now() - cycleStart);
   }
 }
 
@@ -271,6 +314,11 @@ function scheduleFileUpdate(filePath) {
  * Start watching stats directory
  */
 function startWatching() {
+  if (!ENABLE_METRICS) {
+    console.log('Metrics processing DISABLED (set ENABLE_METRICS=true to enable)');
+    return null;
+  }
+
   // Ensure stats directory exists
   if (!fs.existsSync(STATS_DIR)) {
     console.log(`Creating stats directory: ${STATS_DIR}`);
@@ -279,44 +327,52 @@ function startWatching() {
 
   console.log(`Watching stats directory: ${STATS_DIR}`);
 
-  // Watch for file changes with reduced polling
-  const watcher = chokidar.watch(`${STATS_DIR}/*.csv`, {
-    persistent: true,
-    ignoreInitial: true, // Don't process all files on startup
-    awaitWriteFinish: {
-      stabilityThreshold: 2000, // Increased to reduce churn
-      pollInterval: 500
-    },
-    usePolling: false, // Use native fs events for better performance
-    interval: 5000, // Fallback polling interval
-    binaryInterval: 5000
-  });
+  // DISABLED: File watcher can cause high CPU with many files
+  // Using periodic polling only instead
+  let watcher = null;
 
-  watcher.on('add', (filePath) => {
-    scheduleFileUpdate(filePath);
-  });
+  const USE_FILE_WATCHER = process.env.USE_FILE_WATCHER === 'true';
 
-  watcher.on('change', (filePath) => {
-    scheduleFileUpdate(filePath);
-  });
+  if (USE_FILE_WATCHER) {
+    console.log('File watching ENABLED (can cause high CPU with many files)');
+    watcher = chokidar.watch(`${STATS_DIR}/*.csv`, {
+      persistent: true,
+      ignoreInitial: true,
+      awaitWriteFinish: {
+        stabilityThreshold: 2000,
+        pollInterval: 500
+      },
+      usePolling: false,
+      interval: 5000,
+      binaryInterval: 5000
+    });
 
-  watcher.on('unlink', (filePath) => {
-    statsFileCache.delete(filePath);
-  });
+    watcher.on('add', (filePath) => {
+      scheduleFileUpdate(filePath);
+    });
 
-  watcher.on('error', (error) => {
-    console.error('Watcher error:', error);
-  });
+    watcher.on('change', (filePath) => {
+      scheduleFileUpdate(filePath);
+    });
 
-  // Periodic full scan to catch any missed updates
-  // Use longer interval when idle to reduce CPU usage
+    watcher.on('unlink', (filePath) => {
+      statsFileCache.delete(filePath);
+    });
+
+    watcher.on('error', (error) => {
+      console.error('Watcher error:', error);
+    });
+  } else {
+    console.log('File watching DISABLED - using periodic polling only');
+  }
+
+  // Periodic full scan - this is the main update mechanism now
+  const scanInterval = Math.max(UPDATE_INTERVAL * 1000, 60000); // At least 60 seconds
+  console.log(`Scanning every ${scanInterval / 1000} seconds`);
+
   setInterval(() => {
-    // Skip if no files have been seen yet
-    if (statsFileCache.size === 0) {
-      return;
-    }
     updateMetrics();
-  }, Math.max(UPDATE_INTERVAL * 1000, 60000)); // At least 60 seconds between full scans
+  }, scanInterval);
 
   return watcher;
 }
@@ -349,7 +405,9 @@ function startServer() {
   // Graceful shutdown
   const shutdown = () => {
     console.log('\nShutting down gracefully...');
-    watcher.close();
+    if (watcher) {
+      watcher.close();
+    }
     server.close(() => {
       console.log('Server closed');
       process.exit(0);
