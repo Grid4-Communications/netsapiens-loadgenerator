@@ -107,9 +107,9 @@ STATS_PATH="$BASE_DIR/sipp/stats"
 
 # Create stats filename with server ID if provided
 if [ -n "$SERVER_ID" ]; then
-    STATS_FILE="${STATS_PATH}/${SERVER_ID}_register_${LOG_FILE}_$$.csv"
+    STATS_FILE="${STATS_PATH}/${SERVER_ID}_invite_${LOG_FILE}_$$.csv"
 else
-    STATS_FILE="${STATS_PATH}/register_${LOG_FILE}_$$.csv"
+    STATS_FILE="${STATS_PATH}/invite_${LOG_FILE}_$$.csv"
 fi
 
 if [ ! -f "$INPUTFILE" ]; then
