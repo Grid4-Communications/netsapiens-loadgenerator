@@ -102,6 +102,9 @@ fi
 echo "Target server: $SUT"
 echo "Input file: $INPUTFILE"
 
+STATS_PATH="$BASE_DIR/sipp/stats"
+
+
 # Create stats filename with server ID if provided
 if [ -n "$SERVER_ID" ]; then
     STATS_FILE="${STATS_PATH}/${SERVER_ID}_register_${LOG_FILE}_$$.csv"
