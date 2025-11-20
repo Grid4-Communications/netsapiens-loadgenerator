@@ -19,7 +19,7 @@ const fs = require('fs');
 const chokidar = require('chokidar');
 require('dotenv').config();
 
-const { parseStatsDirectory, parseSippStatsFile, parseStatsFilename } = require('./lib/sipp-parser');
+const { parseStatsDirectory, parseSippStatsFile, parseStatsFilename, parseIncrementalLines } = require('./lib/sipp-parser');
 const {
   updateResponseTimeMetrics,
   updateStatsFileCount,
@@ -31,19 +31,22 @@ const {
 const PORT = process.env.METRICS_PORT || 9090;
 const BASE_DIR = process.env.BASE_DIR || __dirname;
 const STATS_DIR = process.env.STATS_DIR || path.join(BASE_DIR, 'sipp', 'stats');
-const UPDATE_INTERVAL = parseInt(process.env.UPDATE_INTERVAL) || 5; // seconds
+const UPDATE_INTERVAL = parseInt(process.env.UPDATE_INTERVAL) || 10; // seconds (default 10)
+const FILE_CLEANUP_AGE = parseInt(process.env.FILE_CLEANUP_AGE) || 600; // seconds (default 10 min)
 const ENABLE_METRICS = process.env.ENABLE_METRICS !== 'false'; // Set to 'false' to disable all processing
 
 // State tracking
 let lastUpdateTime = Date.now();
-let statsFileCache = new Map(); // Track stats files and their last modification time
+let statsFileCache = new Map(); // Track: { filePath: { mtime, size, lastParsedSize } }
 
 // Performance tracking
 let perfStats = {
   updateCycles: 0,
   totalUpdateTime: 0,
   totalParseTime: 0,
-  filesProcessed: 0
+  filesProcessed: 0,
+  linesProcessed: 0,
+  filesDeleted: 0
 };
 
 /**
@@ -69,11 +72,17 @@ app.get('/health', (req, res) => {
     statsDirectory: STATS_DIR,
     activeFiles: statsFileCache.size,
     enabled: ENABLE_METRICS,
+    settings: {
+      updateIntervalSec: UPDATE_INTERVAL,
+      fileCleanupAgeSec: FILE_CLEANUP_AGE
+    },
     performance: {
       updateCycles: perfStats.updateCycles,
       avgUpdateTimeMs: avgUpdateTime,
       avgParseTimeMs: avgParseTime,
-      totalFilesProcessed: perfStats.filesProcessed
+      totalFilesProcessed: perfStats.filesProcessed,
+      totalLinesProcessed: perfStats.linesProcessed,
+      filesDeleted: perfStats.filesDeleted
     }
   });
 });
@@ -119,8 +128,8 @@ app.get('/', (req, res) => {
 });
 
 /**
- * Update metrics from all stats files
- * Only parses files that have been modified since last check
+ * Update metrics from all stats files using incremental parsing
+ * Only parses new lines that have been added since last check
  */
 function updateMetrics() {
   if (!ENABLE_METRICS) {
@@ -143,8 +152,11 @@ function updateMetrics() {
     }
 
     const currentFiles = new Set();
-    let parsedCount = 0;
+    const now = Date.now();
+    let filesWithNewData = 0;
     let skippedCount = 0;
+    let totalLinesThisCycle = 0;
+    let deletedFiles = 0;
 
     // Update file count metric
     updateStatsFileCount(files.length);
@@ -155,53 +167,86 @@ function updateMetrics() {
       currentFiles.add(filePath);
 
       try {
-        // Check if file was modified since last update
+        // Check if file was modified recently
         const fileStat = fs.statSync(filePath);
-        const lastModified = fileStat.mtimeMs;
+        const fileAge = (now - fileStat.mtimeMs) / 1000; // seconds
 
-        const cachedModTime = statsFileCache.get(filePath);
-        if (cachedModTime && cachedModTime >= lastModified) {
-          // File hasn't changed, skip parsing
+        // Delete files older than FILE_CLEANUP_AGE
+        if (fileAge > FILE_CLEANUP_AGE) {
+          try {
+            fs.unlinkSync(filePath);
+            statsFileCache.delete(filePath);
+            deletedFiles++;
+            perfStats.filesDeleted++;
+            console.log(`Deleted old file (${Math.floor(fileAge / 60)}min old): ${filename}`);
+          } catch (e) {
+            console.error(`Failed to delete ${filename}:`, e.message);
+          }
+          continue;
+        }
+
+        const currentSize = fileStat.size;
+        const cached = statsFileCache.get(filePath);
+
+        // Skip if file hasn't grown
+        if (cached && cached.size >= currentSize) {
           skippedCount++;
           continue;
         }
 
-        // Parse only this file (moved require to top of file)
+        // Determine where to start reading
+        const startPos = cached ? cached.lastParsedSize : 0;
+
+        // Parse new lines incrementally
         const parseStart = Date.now();
-        const stats = parseSippStatsFile(filePath);
+        const result = parseIncrementalLines(filePath, startPos);
         const parseTime = Date.now() - parseStart;
 
         perfStats.totalParseTime += parseTime;
         perfStats.filesProcessed++;
 
-        if (!stats) {
+        if (result.lines.length === 0) {
+          // Update cache even if no new lines parsed
+          statsFileCache.set(filePath, {
+            mtime: fileStat.mtimeMs,
+            size: currentSize,
+            lastParsedSize: result.newSize
+          });
+          skippedCount++;
           continue;
         }
 
         const metadata = parseStatsFilename(filename);
         const { serverId, scenario } = metadata;
 
-        // Update cache
-        statsFileCache.set(filePath, lastModified);
-        parsedCount++;
-
-        // Extract response times for different operations
-        const { responseTimes } = stats;
+        // Update metrics with ALL new lines (use the latest/last one for current metrics)
+        const latestStats = result.lines[result.lines.length - 1];
+        const { responseTimes } = latestStats;
 
         if (responseTimes && responseTimes.count > 0) {
           const operation = scenario === 'register' ? 'register' : scenario;
-
           updateResponseTimeMetrics(serverId, scenario, operation, responseTimes);
+        }
 
-          if (parsedCount <= 5) { // Only log first 5 to reduce noise
-            console.log(
-              `Updated metrics: server=${serverId}, scenario=${scenario}, ` +
-              `count=${responseTimes.count}, avg=${responseTimes.average.toFixed(3)}s, ` +
-              `p50=${responseTimes.percentiles.p50.toFixed(3)}s, ` +
-              `p95=${responseTimes.percentiles.p95.toFixed(3)}s, ` +
-              `p99=${responseTimes.percentiles.p99.toFixed(3)}s`
-            );
-          }
+        // Update cache
+        statsFileCache.set(filePath, {
+          mtime: fileStat.mtimeMs,
+          size: currentSize,
+          lastParsedSize: result.newSize
+        });
+
+        filesWithNewData++;
+        totalLinesThisCycle += result.lines.length;
+        perfStats.linesProcessed += result.lines.length;
+
+        // Log first few updates
+        if (filesWithNewData <= 3 && responseTimes && responseTimes.count > 0) {
+          console.log(
+            `Updated ${filename}: +${result.lines.length} lines, ` +
+            `server=${serverId}, scenario=${scenario}, ` +
+            `count=${responseTimes.count}, avg=${responseTimes.average.toFixed(3)}s, ` +
+            `p95=${responseTimes.percentiles.p95.toFixed(3)}s`
+          );
         }
       } catch (err) {
         console.error(`Error processing file ${filename}:`, err.message);
@@ -212,7 +257,7 @@ function updateMetrics() {
     for (const [file, _] of statsFileCache.entries()) {
       if (!currentFiles.has(file)) {
         statsFileCache.delete(file);
-        console.log(`Removed stale file from cache: ${file}`);
+        console.log(`Removed stale file from cache: ${path.basename(file)}`);
       }
     }
 
@@ -220,10 +265,11 @@ function updateMetrics() {
     perfStats.updateCycles++;
     perfStats.totalUpdateTime += cycleTime;
 
-    if (parsedCount > 0 || (Date.now() - lastUpdateTime) > 60000) {
+    if (filesWithNewData > 0 || deletedFiles > 0 || (Date.now() - lastUpdateTime) > 60000) {
       console.log(
-        `Update cycle: ${parsedCount} parsed, ${skippedCount} skipped, ${files.length} total files, ` +
-        `cycle took ${cycleTime}ms (avg: ${(perfStats.totalUpdateTime / perfStats.updateCycles).toFixed(1)}ms)`
+        `Cycle: ${filesWithNewData} updated (+${totalLinesThisCycle} lines), ` +
+        `${skippedCount} skipped, ${deletedFiles} deleted, ${files.length} total, ` +
+        `${cycleTime}ms (avg: ${(perfStats.totalUpdateTime / perfStats.updateCycles).toFixed(1)}ms)`
       );
     }
 
@@ -367,7 +413,7 @@ function startWatching() {
   }
 
   // Periodic full scan - this is the main update mechanism now
-  const scanInterval = Math.max(UPDATE_INTERVAL * 1000, 60000); // At least 60 seconds
+  const scanInterval = UPDATE_INTERVAL * 1000; // No minimum, user controls it
   console.log(`Scanning every ${scanInterval / 1000} seconds`);
 
   setInterval(() => {
@@ -387,6 +433,8 @@ function startServer() {
   console.log(`Port: ${PORT}`);
   console.log(`Stats Directory: ${STATS_DIR}`);
   console.log(`Update Interval: ${UPDATE_INTERVAL}s`);
+  console.log(`File Cleanup Age: ${FILE_CLEANUP_AGE}s (${Math.floor(FILE_CLEANUP_AGE / 60)}min)`);
+  console.log(`Incremental Parsing: ENABLED`);
   console.log('=================================\n');
 
   // Start watching stats directory
