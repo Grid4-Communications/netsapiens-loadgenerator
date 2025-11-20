@@ -174,7 +174,6 @@ else
     LOG_FILE="$BASE_DIR/sipp/scripts/inbound_${TIMEZONE}.log"
 fi
 
-//replace spaces and special characters in timezone for stats filename
 TZ_CLEAN=$(echo "$TIMEZONE" | tr ' /' '__' | tr -cd '[:alnum:]')
 
 # Create stats filename with server ID if provided
