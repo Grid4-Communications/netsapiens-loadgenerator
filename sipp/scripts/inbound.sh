@@ -247,7 +247,5 @@ sipp \
 	-key media_ip $PUBLICIP \
 	-bg \
     -trace_err \
-    -trace_stat -stf "$STATS_FILE" -fd 15 \
+    -trace_stat -stf "$STATS_FILE" -fd 15    \
     > "$LOG_FILE" 2>&1
-
-

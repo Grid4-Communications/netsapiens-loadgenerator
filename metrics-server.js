@@ -22,10 +22,12 @@ require('dotenv').config();
 const { parseStatsDirectory, parseSippStatsFile, parseStatsFilename, parseLatestStats } = require('./lib/sipp-parser');
 const {
   updateResponseTimeMetrics,
+  updateCallMetrics,
   updateStatsFileCount,
   getMetrics,
   getContentType
 } = require('./lib/prometheus-metrics');
+const statsTracker = require('./lib/stats-tracker');
 
 // Configuration
 const PORT = process.env.METRICS_PORT || 9090;
@@ -218,8 +220,17 @@ async function updateMetrics() {
     let skippedCount = 0;
     let deletedFiles = 0;
 
+    // Remove stale files from stats tracker (>5min since last update)
+    const staleFiles = statsTracker.removeStaleFiles();
+    if (staleFiles.length > 0) {
+      console.log(`Removed ${staleFiles.length} stale files from tracker`);
+    }
+
     // Update file count metric
     updateStatsFileCount(files.length);
+
+    // Collect stats for aggregation
+    const fileStatsForAggregation = [];
 
     // Process each stats file
     for (const filename of files) {
@@ -275,7 +286,17 @@ async function updateMetrics() {
         const metadata = parseStatsFilename(filename);
         const { serverId, scenario, transport } = metadata;
 
-        // Update metrics for each operation
+        // Update state tracker and get deltas
+        const deltas = statsTracker.updateFileState(filePath, result.stats, currentSize);
+
+        // Collect for aggregation (need both current stats and deltas)
+        fileStatsForAggregation.push({
+          metadata,
+          stats: result.stats,
+          deltas
+        });
+
+        // Update response time metrics for each operation
         const { responseTimesByOperation } = result.stats;
 
         if (responseTimesByOperation && Object.keys(responseTimesByOperation).length > 0) {
@@ -291,7 +312,8 @@ async function updateMetrics() {
                 console.log(
                   `✓ Updated ${filename}: server=${serverId}, scenario=${scenario}, ` +
                   `transport=${transport}, operation=${operation}, samples=${responseTimes.count}, ` +
-                  `avg=${responseTimes.average.toFixed(4)}s, p95=${responseTimes.percentiles.p95.toFixed(4)}s`
+                  `avg=${responseTimes.average.toFixed(4)}s, p95=${responseTimes.percentiles.p95.toFixed(4)}s, ` +
+                  `calls=${result.stats.totalCalls}, rate=${deltas ? deltas.instantCallRate.toFixed(2) : 0}cps`
                 );
               }
             }
@@ -320,6 +342,21 @@ async function updateMetrics() {
         filesUpdated++;
       } catch (err) {
         console.error(`Error processing file ${filename}:`, err.message);
+      }
+    }
+
+    // Aggregate stats and update call metrics
+    if (fileStatsForAggregation.length > 0) {
+      const aggregatedStats = statsTracker.aggregateStats(fileStatsForAggregation);
+      updateCallMetrics(aggregatedStats);
+
+      // Log aggregated stats
+      if (aggregatedStats.size > 0) {
+        const trackerStats = statsTracker.getCacheStats();
+        console.log(
+          `Aggregated: ${aggregatedStats.size} groups, ` +
+          `tracker: ${trackerStats.activeFiles} active/${trackerStats.totalFiles} total`
+        );
       }
     }
 
