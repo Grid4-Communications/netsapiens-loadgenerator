@@ -241,6 +241,7 @@ sipp \
 	-watchdog_minor_threshold 920000 \
 	-watchdog_major_threshold 9200000 \
 	-t $TRANSPORT \
+    -i $PRIVATEIP \
 	$TLS_OPTIONS \
     -inf $BASE_DIR/sipp/csv/random_caller_ids.csv \
 	-recv_timeout 60000 \

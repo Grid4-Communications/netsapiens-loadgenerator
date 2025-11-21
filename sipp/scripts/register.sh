@@ -102,6 +102,7 @@ sipp \
 	-watchdog_major_threshold 9200000 \
 	-aa -default_behaviors -abortunexp \
 	$MEDIAPORT_LOGIC \
+	-i $PRIVATEIP \
 	-mi $PRIVATEIP \
 	-bg -trace_err -error_file "$LOG_PATH/error_$LOG_FILE.log" \
 	-trace_stat -stf "$STATS_FILE" -fd 15
