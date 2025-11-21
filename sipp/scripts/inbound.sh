@@ -247,16 +247,7 @@ sipp \
 	-key media_ip $PUBLICIP \
 	-bg \
     -trace_err \
-    -trace_stat -stf "$STATS_FILE" -fd 30 \
+    -trace_stat -stf "$STATS_FILE" -fd 15 \
     > "$LOG_FILE" 2>&1
 
 
-
-sipp core2-phx.ca.nseng.dev -key expires 60  -m 1 -t t1 -p 11304 -cp 15244 -rtp_echo \
--sf /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/register.and.subscribe.sipp.xml \
--oocsf /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/sipp_uas_pcap_g711a.xml \
--inf /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/csv/servers/core2-phx.ca/devices/yost_parisian_ltd.csv \
--inf /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/csv/random_user_agents.csv -recv_timeout 60000 -watchdog_interval 0 -watchdog_minor_threshold 920000 \
--watchdog_major_threshold 9200000 -aa -default_behaviors -abortunexp -min_rtp_port 25976 -max_rtp_port 25979 -mi 172.16.1.41 \
--trace_err -error_file /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/error_yost_parisian_ltd.csv.log -trace_stat \
--stf /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/stats/core2-phx.ca_register_t1_yost_parisian_ltd.csv_108193.csv -fd 30
