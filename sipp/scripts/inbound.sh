@@ -211,25 +211,18 @@ if [ "$TRANSPORT" == "l1" ]; then
     SIP_PORT_ADD_ON=":5061"
 	if [ -f "$TLS_CERT" ] && [ -f "$TLS_KEY" ]; then
 		# Add TLS version options - use TLS 1.2 for better compatibility
-		# Note: We only use -tls_ca if we also have a CRL file, otherwise SIPp will fail
+		# Include system CA bundle for verifying server certificates
+		# Note: We do NOT include -tls_crl because it causes verification errors
+		# when the CRL is for the client cert but SIPp tries to verify the server cert with it
 		TLS_CA_PATH=""
-		TLS_CRL_PATH=""
-
-		# Check if CRL file exists first
-		if [ -f "$BASE_DIR/sipp/tls/sipp.crl" ]; then
-			TLS_CRL_PATH="-tls_crl $BASE_DIR/sipp/tls/sipp.crl"
-
-			# Only add CA file if we have CRL (to avoid CRL-related errors)
-			if [ -f "/etc/ssl/certs/ca-certificates.crt" ]; then
-				TLS_CA_PATH="-tls_ca /etc/ssl/certs/ca-certificates.crt"
-			elif [ -f "/etc/pki/tls/certs/ca-bundle.crt" ]; then
-				TLS_CA_PATH="-tls_ca /etc/pki/tls/certs/ca-bundle.crt"
-			fi
+		if [ -f "/etc/ssl/certs/ca-certificates.crt" ]; then
+			TLS_CA_PATH="-tls_ca /etc/ssl/certs/ca-certificates.crt"
+		elif [ -f "/etc/pki/tls/certs/ca-bundle.crt" ]; then
+			TLS_CA_PATH="-tls_ca /etc/pki/tls/certs/ca-bundle.crt"
 		fi
 
-		# Don't force TLS version - let SIPp autonegotiate (default behavior)
-		# This allows SIPp to negotiate TLS 1.3 if the server supports it
-		TLS_OPTIONS="-tls_cert $TLS_CERT -tls_key $TLS_KEY $TLS_CA_PATH $TLS_CRL_PATH"
+		# Use TLS 1.2 for compatibility with older servers
+		TLS_OPTIONS="-tls_cert $TLS_CERT -tls_key $TLS_KEY -tls_version 1.2 $TLS_CA_PATH"
 	else
 		echo "ERROR: TLS transport requested but certificates not found!"
 		echo "Expected: $TLS_CERT and $TLS_KEY"
@@ -257,3 +250,13 @@ sipp \
     -trace_stat -stf "$STATS_FILE" -fd 30 \
     > "$LOG_FILE" 2>&1
 
+
+
+sipp core2-phx.ca.nseng.dev -key expires 60  -m 1 -t t1 -p 11304 -cp 15244 -rtp_echo \
+-sf /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/register.and.subscribe.sipp.xml \
+-oocsf /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/sipp_uas_pcap_g711a.xml \
+-inf /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/csv/servers/core2-phx.ca/devices/yost_parisian_ltd.csv \
+-inf /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/csv/random_user_agents.csv -recv_timeout 60000 -watchdog_interval 0 -watchdog_minor_threshold 920000 \
+-watchdog_major_threshold 9200000 -aa -default_behaviors -abortunexp -min_rtp_port 25976 -max_rtp_port 25979 -mi 172.16.1.41 \
+-trace_err -error_file /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/error_yost_parisian_ltd.csv.log -trace_stat \
+-stf /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/stats/core2-phx.ca_register_t1_yost_parisian_ltd.csv_108193.csv -fd 30
