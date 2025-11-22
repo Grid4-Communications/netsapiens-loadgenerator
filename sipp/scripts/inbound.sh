@@ -277,8 +277,8 @@ echo "$SIPP_OUTPUT" | logger -t sipp-inbound -p user.info
 # Extract the actual sipp PID from the "Background mode - PID=[XXXXX]" message
 SIPP_PID=$(echo "$SIPP_OUTPUT" | grep -oP 'Background mode - PID=\[\K[0-9]+(?=\])')
 
-# Give it 5 seconds to start, then verify it's still running
-sleep 5
+# Give it 2 seconds to start, then verify it's still running
+sleep 2
 
 # Check if sipp process is still running
 if [ -n "$SIPP_PID" ] && ps -p $SIPP_PID > /dev/null 2>&1; then
