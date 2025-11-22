@@ -12,10 +12,10 @@ LOCK_TIMEOUT="${LOCK_TIMEOUT:-4200}"  # 70 minutes default (register.sh runs ~1h
 
 # Port ranges (ephemeral range to avoid conflicts)
 SIP_PORT_MIN=20000
-SIP_PORT_MAX=25000
-CONTROL_PORT_MIN=25001
-CONTROL_PORT_MAX=30000
-MEDIA_PORT_MIN=30001
+SIP_PORT_MAX=22000
+CONTROL_PORT_MIN=22001
+CONTROL_PORT_MAX=24000
+MEDIA_PORT_MIN=24001
 MEDIA_PORT_MAX=60000
 
 
@@ -98,13 +98,13 @@ is_port_available() {
         rm -f "$lockfile"
     fi
 
-    # Check if port is actually in use by the system
-    # Use netstat or ss to check
-    if command -v ss &>/dev/null; then
-        ss -tan | grep -q ":${port} " && return 1
-    elif command -v netstat &>/dev/null; then
-        netstat -tan | grep -q ":${port} " && return 1
-    fi
+    # # Check if port is actually in use by the system
+    # # Use netstat or ss to check
+    # if command -v ss &>/dev/null; then
+    #     ss -tan | grep -q ":${port} " && return 1
+    # elif command -v netstat &>/dev/null; then
+    #     netstat -tan | grep -q ":${port} " && return 1
+    # fi
 
     return 0  # Port is available
 }
