@@ -12,6 +12,9 @@
 BASE_DIR="/usr/local/NetSapiens/netsapiens-loadgenerator"
 source $BASE_DIR/.env
 
+# Source port allocator for dynamic port allocation
+source "$BASE_DIR/sipp/scripts/port-allocator.sh"
+
 # Parse arguments: timezone is first, transport is optional (defaults to u1), --server is optional
 TIMEZONE="$1"
 TRANSPORT=""
@@ -174,6 +177,19 @@ PEAK_CPS=$(echo "scale=2; $PEAK_CPS / 1" | bc)
 PUBLICIP=`dig +short myip.opendns.com @resolver1.opendns.com -4`
 PRIVATEIP=$(ip a s|sed -ne '/127.0.0.1/!{s/^[ \t]*inet[ \t]*\([0-9.]\+\)\/.*$/\1/p}')
 
+# Allocate ports for this inbound call session (runs ~5 minutes)
+echo "Allocating ports for inbound calls..."
+if ! allocate_ports 1 4 1; then
+	echo "ERROR: Failed to allocate ports for inbound calls"
+	exit 1
+fi
+
+SIP_PORT=$ALLOCATED_SIP_PORT
+MEDIA_PORT=$ALLOCATED_MEDIA_PORT
+CONTROL_PORT=$ALLOCATED_CONTROL_PORT
+
+echo "Allocated ports - SIP: $SIP_PORT, Media: $MEDIA_PORT-$((MEDIA_PORT+3)), Control: $CONTROL_PORT"
+
 if [ "$IP_USE_PUBLIC" == "1" ]; then
 	sed -i -e "s/\[media_ip\]/$PUBLICIP/g" /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/sipp_uac_pcap_g711a.xml
 else 
@@ -231,22 +247,32 @@ if [ "$TRANSPORT" == "l1" ]; then
 	fi
 fi
 
-sipp \
-	${SUT}${SIP_PORT_ADD_ON} \
-    -r "$CALLRATE" \
-	-m $NUMCALLS \
-	-sf $BASE_DIR/sipp/scripts/sipp_uac_pcap_g711a.xml \
-	-inf $INPUTFILE \
-	-watchdog_interval 900000 \
-	-watchdog_minor_threshold 920000 \
-	-watchdog_major_threshold 9200000 \
-	-t $TRANSPORT \
-    -i $PRIVATEIP \
-	$TLS_OPTIONS \
-    -inf $BASE_DIR/sipp/csv/random_caller_ids.csv \
-	-recv_timeout 60000 \
-	-key media_ip $PUBLICIP \
-	-bg \
-    -trace_err \
-    -trace_stat -stf "$STATS_FILE" -fd 15    \
-    > "$LOG_FILE" 2>&1
+SIPP_CMD="sipp ${SUT}${SIP_PORT_ADD_ON} -r $CALLRATE -m $NUMCALLS \
+-sf $BASE_DIR/sipp/scripts/sipp_uac_pcap_g711a.xml \
+-inf $INPUTFILE \
+-watchdog_interval 900000 -watchdog_minor_threshold 920000 -watchdog_major_threshold 9200000 \
+-t $TRANSPORT \
+-i $PRIVATEIP \
+-p $SIP_PORT \
+-cp $CONTROL_PORT \
+-min_rtp_port $MEDIA_PORT -max_rtp_port $((MEDIA_PORT + 3)) \
+$TLS_OPTIONS \
+-inf $BASE_DIR/sipp/csv/random_caller_ids.csv \
+-recv_timeout 60000 \
+-key media_ip $PUBLICIP \
+-bg \
+-trace_err \
+-trace_stat -stf $STATS_FILE -fd 15"
+
+# Log command to syslog
+logger -t sipp-inbound -p user.info "Starting inbound calls: server=$SERVER_ID scenario=inbound transport=$TRANSPORT timezone=$TIMEZONE sip_port=$SIP_PORT media_port=$MEDIA_PORT control_port=$CONTROL_PORT"
+
+# Execute sipp command
+$SIPP_CMD > "$LOG_FILE" 2>&1
+
+# Log completion to syslog
+if [ $? -eq 0 ]; then
+	logger -t sipp-inbound -p user.info "Completed inbound calls: server=$SERVER_ID scenario=inbound transport=$TRANSPORT timezone=$TIMEZONE calls=$NUMCALLS"
+else
+	logger -t sipp-inbound -p user.err "Failed inbound calls: server=$SERVER_ID scenario=inbound transport=$TRANSPORT timezone=$TIMEZONE exit_code=$?"
+fi

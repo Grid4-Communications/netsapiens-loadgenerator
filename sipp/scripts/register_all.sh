@@ -120,30 +120,17 @@ if [ "$FILES" -eq 0 ]; then
 fi
 
 COUNTER_LOCAL=0;
-HOUROFDAY=`date +"%H"`
 MINOFHOUR=`date +"%M"`
-ADJUSTPORT=$((HOUROFDAY % 2)) # 0 or 1, use to adjust port numbers every hour to avoid conflicts at the top of the hour during flip over.
 
-# Calculate server-specific port offset to prevent conflicts when multiple servers run on same machine
-SERVER_PORT_OFFSET=0
-if [ -n "$SERVER_ID" ]; then
-    # Generate a unique offset based on server ID hash (0-9000 range in increments of 1000)
-    SERVER_HASH=$(echo -n "$SERVER_ID" | md5sum | cut -c1-2)
-    SERVER_PORT_OFFSET=$((0x$SERVER_HASH % 10 * 1000))
-    echo "Server-specific port offset: $SERVER_PORT_OFFSET"
-fi
+# Source the port allocator
+source "$BASE_DIR/sipp/scripts/port-allocator.sh"
 
-if [ $ADJUSTPORT -eq 0 ]; then
-	SIPPORT=$((6060 + SERVER_PORT_OFFSET));
-	MEDIAPORT=$((20000 + SERVER_PORT_OFFSET));
-	CONTROLPORT=$((10000 + SERVER_PORT_OFFSET));
-else
-	SIPPORT=$((8060 + SERVER_PORT_OFFSET));
-	MEDIAPORT=$((30004 + SERVER_PORT_OFFSET));
-	CONTROLPORT=$((12004 + SERVER_PORT_OFFSET));
-fi
-
-echo "Port ranges - SIP: $SIPPORT+, Media: $MEDIAPORT+, Control: $CONTROLPORT+"
+# Initialize port allocation system
+echo "Initializing port allocation system..."
+init_port_locks
+cleanup_stale_locks
+echo "Port allocation ready. Lock directory: $PORT_LOCK_DIR"
+get_port_stats
 
 # get the public ip and push it into the sipp scripts for the media ip.
 PUBLICIP=`dig +short myip.opendns.com @resolver1.opendns.com -4`
@@ -170,22 +157,31 @@ echo "starting run... " > "$ERROR_LOG"
 echo "scheduling batch" >> "$REGISTER_LOG"
 
 for file in $CSV_PATH/*; do
-	SIPPORT=$((SIPPORT + 1));
-	CONTROLPORT=$((CONTROLPORT + 1));
-	MEDIAPORT=$((MEDIAPORT + 4));
-
 	#modulo COUNTER AND MINOFHOUR
 	MODU=$((COUNTER % 60));
 	if [ $MODU -eq $MINOFHOUR ]; then
 		echo "Registering $file"
 	else
-		COUNTER=$((COUNTER + 1)); ##incremenet here to keep looping. 
-		continue;		
+		COUNTER=$((COUNTER + 1)); ##incremenet here to keep looping.
+		continue;
 	fi
 
 	COUNTER=$((COUNTER + 1)); #moved below to keep 0 based index.
 
 	sleep 2; #disperse the load a bit.
+
+	# Allocate ports dynamically for this SIPp instance
+	echo "Allocating ports for $(basename $file)..."
+	if ! allocate_ports 1 4 1; then
+		echo "ERROR: Failed to allocate ports for $file, skipping..."
+		continue
+	fi
+
+	SIPPORT=$ALLOCATED_SIP_PORT
+	MEDIAPORT=$ALLOCATED_MEDIA_PORT
+	CONTROLPORT=$ALLOCATED_CONTROL_PORT
+
+	echo "  Allocated - SIP: $SIPPORT, Media: $MEDIAPORT-$((MEDIAPORT+3)), Control: $CONTROLPORT"
 
 	TRANSPORT_TYPE=$((COUNTER % 3));
 	if [ $TRANSPORT_TYPE -eq 2 ]; then
@@ -196,5 +192,11 @@ for file in $CSV_PATH/*; do
 		# TLS support (l1 = TLS with one socket)
 		/usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/register.sh "$SUT" "$file" "l1" $SIPPORT $MEDIAPORT $CONTROLPORT $PUBLICIP "$SERVER_ID"
 	fi
-    
+
+	# Note: Ports will be released when register.sh completes via trap
+
 done
+
+# Final cleanup
+echo "Registration batch complete. Final port stats:"
+get_port_stats

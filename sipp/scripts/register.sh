@@ -9,6 +9,9 @@
 BASE_DIR="/usr/local/NetSapiens/netsapiens-loadgenerator"
 source $BASE_DIR/.env
 
+# Source port allocator for port release on exit
+source "$BASE_DIR/sipp/scripts/port-allocator.sh"
+
 SUT=$1
 
 INPUTFILE=$2
@@ -82,29 +85,31 @@ if [ "$TRANSPORT" == "l1" ]; then
 	fi
 fi
 
-sipp \
-	${SUT}${SIP_PORT_ADD_ON} \
-    -key expires 60 \
-	-r $[CALLRATE] \
-	-m $MAX_USERS \
-	-t $TRANSPORT \
-	$TLS_OPTIONS \
-	-p $PORT \
-	-cp $CONTROL_PORT \
-	-rtp_echo \
-	-sf $BASE_DIR/sipp/scripts/register.and.subscribe.sipp.xml \
-	-oocsf $BASE_DIR/sipp/scripts/sipp_uas_pcap_g711a.xml \
-	-inf $INPUTFILE \
-	-inf $BASE_DIR/sipp/csv/random_user_agents.csv \
-	-recv_timeout 60000 \
-	-watchdog_interval 0 \
-	-watchdog_minor_threshold 920000 \
-	-watchdog_major_threshold 9200000 \
-	-aa -default_behaviors -abortunexp \
-	$MEDIAPORT_LOGIC \
-	-i $PRIVATEIP \
-	-mi $PRIVATEIP \
-	-bg -trace_err -error_file "$LOG_PATH/error_$LOG_FILE.log" \
-	-trace_stat -stf "$STATS_FILE" -fd 15
+SIPP_CMD="sipp ${SUT}${SIP_PORT_ADD_ON} -key expires 60 -r $[CALLRATE] -m $MAX_USERS \
+-t $TRANSPORT $TLS_OPTIONS -p $PORT -cp $CONTROL_PORT -rtp_echo \
+-sf $BASE_DIR/sipp/scripts/register.and.subscribe.sipp.xml \
+-oocsf $BASE_DIR/sipp/scripts/sipp_uas_pcap_g711a.xml \
+-inf $INPUTFILE \
+-inf $BASE_DIR/sipp/csv/random_user_agents.csv \
+-recv_timeout 60000 \
+-watchdog_interval 0 -watchdog_minor_threshold 920000 -watchdog_major_threshold 9200000 \
+-aa -default_behaviors -abortunexp \
+$MEDIAPORT_LOGIC \
+-i $PRIVATEIP -mi $PRIVATEIP \
+-bg -trace_err -error_file $LOG_PATH/error_$LOG_FILE.log \
+-trace_stat -stf $STATS_FILE -fd 15"
+
+# Log command to syslog
+logger -t sipp-register -p user.info "Starting registration: server=$SERVER_ID scenario=register transport=$TRANSPORT file=$LOG_FILE users=$MAX_USERS sip_port=$PORT media_port=$MEDIA_PORT control_port=$CONTROL_PORT"
+
+# Execute sipp command
+$SIPP_CMD
+
+# Log completion to syslog
+if [ $? -eq 0 ]; then
+	logger -t sipp-register -p user.info "Completed registration: server=$SERVER_ID scenario=register transport=$TRANSPORT file=$LOG_FILE users=$MAX_USERS"
+else
+	logger -t sipp-register -p user.err "Failed registration: server=$SERVER_ID scenario=register transport=$TRANSPORT file=$LOG_FILE exit_code=$?"
+fi
 
 	
