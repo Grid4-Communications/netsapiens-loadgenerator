@@ -104,15 +104,25 @@ logger -t sipp-register -p user.info "Starting registration: server=$SERVER_ID s
 logger -t sipp-register -p user.info "Command: $SIPP_CMD"
 
 # Execute sipp command (runs in background with -bg flag)
-$SIPP_CMD 2>&1 | logger -t sipp-register -p user.info &
-LOGGER_PID=$!
+# Capture output to extract the PID
+SIPP_OUTPUT=$($SIPP_CMD 2>&1)
+SIPP_EXIT=$?
+
+# Log the output
+echo "$SIPP_OUTPUT" | logger -t sipp-register -p user.info
+
+# Extract the actual sipp PID from the "Background mode - PID=[XXXXX]" message
+SIPP_PID=$(echo "$SIPP_OUTPUT" | grep -oP 'Background mode - PID=\[\K[0-9]+(?=\])')
 
 # Give it 5 seconds to start, then verify it's still running
 sleep 5
 
-# Check if logger process (and by extension sipp) is still running
-if ps -p $LOGGER_PID > /dev/null 2>&1; then
-	logger -t sipp-register -p user.info "Registration process started successfully: server=$SERVER_ID scenario=register transport=$TRANSPORT file=$LOG_FILE users=$MAX_USERS pid=$LOGGER_PID"
+# Check if sipp process is still running
+if [ -n "$SIPP_PID" ] && ps -p $SIPP_PID > /dev/null 2>&1; then
+	logger -t sipp-register -p user.info "Registration process started successfully: server=$SERVER_ID scenario=register transport=$TRANSPORT file=$LOG_FILE users=$MAX_USERS pid=$SIPP_PID"
+elif [ $SIPP_EXIT -ne 0 ]; then
+	logger -t sipp-register -p user.err "Registration process failed to start: server=$SERVER_ID scenario=register transport=$TRANSPORT file=$LOG_FILE exit_code=$SIPP_EXIT"
+	exit 1
 else
 	logger -t sipp-register -p user.err "Registration process failed to start or crashed: server=$SERVER_ID scenario=register transport=$TRANSPORT file=$LOG_FILE"
 	exit 1
