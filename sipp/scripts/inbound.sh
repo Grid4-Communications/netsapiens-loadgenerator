@@ -261,18 +261,11 @@ $TLS_OPTIONS \
 -recv_timeout 60000 \
 -key media_ip $PUBLICIP \
 -bg \
--trace_err \
 -trace_stat -stf $STATS_FILE -fd 15"
 
 # Log command to syslog
 logger -t sipp-inbound -p user.info "Starting inbound calls: server=$SERVER_ID scenario=inbound transport=$TRANSPORT timezone=$TIMEZONE sip_port=$SIP_PORT media_port=$MEDIA_PORT control_port=$CONTROL_PORT"
 
 # Execute sipp command
-$SIPP_CMD > "$LOG_FILE" 2>&1
-
-# Log completion to syslog
-if [ $? -eq 0 ]; then
-	logger -t sipp-inbound -p user.info "Completed inbound calls: server=$SERVER_ID scenario=inbound transport=$TRANSPORT timezone=$TIMEZONE calls=$NUMCALLS"
-else
-	logger -t sipp-inbound -p user.err "Failed inbound calls: server=$SERVER_ID scenario=inbound transport=$TRANSPORT timezone=$TIMEZONE exit_code=$?"
-fi
+logger -t sipp-inbound -p user.info "$SIPP_CMD"
+$SIPP_CMD 2>&1 | logger -t sipp-inbound -p user.info 

@@ -96,20 +96,14 @@ SIPP_CMD="sipp ${SUT}${SIP_PORT_ADD_ON} -key expires 60 -r $[CALLRATE] -m $MAX_U
 -aa -default_behaviors -abortunexp \
 $MEDIAPORT_LOGIC \
 -i $PRIVATEIP -mi $PRIVATEIP \
--bg -trace_err -error_file $LOG_PATH/error_$LOG_FILE.log \
+-bg -error_file $LOG_PATH/error_$LOG_FILE.log \
 -trace_stat -stf $STATS_FILE -fd 15"
 
 # Log command to syslog
-logger -t sipp-register -p user.info "Starting registration: server=$SERVER_ID scenario=register transport=$TRANSPORT file=$LOG_FILE users=$MAX_USERS sip_port=$PORT media_port=$MEDIA_PORT control_port=$CONTROL_PORT"
+logger -t sipp-register -p user.info "Starting registration: server=$SERVER_ID scenario=logger -t sipp-register -p user.info " transport=$TRANSPORT file=$LOG_FILE users=$MAX_USERS sip_port=$PORT media_port=$MEDIA_PORT control_port=$CONTROL_PORT"
 
 # Execute sipp command
-$SIPP_CMD
 
-# Log completion to syslog
-if [ $? -eq 0 ]; then
-	logger -t sipp-register -p user.info "Completed registration: server=$SERVER_ID scenario=register transport=$TRANSPORT file=$LOG_FILE users=$MAX_USERS"
-else
-	logger -t sipp-register -p user.err "Failed registration: server=$SERVER_ID scenario=register transport=$TRANSPORT file=$LOG_FILE exit_code=$?"
-fi
+logger -t sipp-register -p user.info "$SIPP_CMD"
 
-	
+$SIPP_CMD 2>&1 | logger -t sipp-register -p user.info 
