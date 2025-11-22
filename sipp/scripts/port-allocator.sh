@@ -46,13 +46,23 @@ cleanup_stale_locks() {
 
     # Calculate minutes threshold (LOCK_TIMEOUT is in seconds)
     local timeout_minutes=$((LOCK_TIMEOUT / 60 + 1))
+    
 
     # Use find with -mmin to let filesystem do the filtering (much faster)
     # Delete files older than timeout_minutes
-    local cleaned=$(find "$PORT_LOCK_DIR" -name "*.lock" -type f -mmin +${timeout_minutes} -delete -print 2>/dev/null | wc -l)
+
+    # loop and find locks older than timeout and delete them
+    local cleaned=0
+    while IFS= read -r lockfile; do
+        # Extract port number from filename (port_12345.lock -> 12345)
+        local port=$(basename "$lockfile" | sed 's/port_\([0-9]*\)\.lock/\1/')
+        logger -t sipp-locks -p user.info "Cleaning stale lock for port $port (older than ${timeout_minutes}min)"
+        rm -f "$lockfile" 2>/dev/null
+        cleaned=$((cleaned + 1))
+    done < <(find "$PORT_LOCK_DIR" -name "*.lock" -type f -mmin +${timeout_minutes} 2>/dev/null)
 
     if [ "$cleaned" -gt 0 ]; then
-        echo "Cleaned up $cleaned stale port locks (older than ${timeout_minutes}min)" >&2
+        logger -t sipp-locks -p user.info "Cleaned up $cleaned stale port locks total (older than ${timeout_minutes}min)"
     fi
 }
 
@@ -95,6 +105,7 @@ lock_port() {
 
     # Verify lock was created
     if [ -f "$lockfile" ]; then
+        logger -t sipp-locks -p user.info "Locked port $port for $purpose by PID $$"
         return 0
     else
         return 1
@@ -108,6 +119,7 @@ lock_port() {
 unlock_port() {
     local port=$1
     local lockfile="$PORT_LOCK_DIR/port_${port}.lock"
+    logger -t sipp-locks -p user.info "Unlocked port $port by PID $$"
     rm -f "$lockfile" 2>/dev/null
 }
 
@@ -242,26 +254,27 @@ allocate_ports() {
 # Release previously allocated ports
 # Args: $1 = sip_port, $2 = media_port, $3 = control_port, $4 = num_media (default 4)
 ##
-release_ports() {
-    local sip_port=$1
-    local media_port=$2
-    local control_port=$3
-    local num_media=${4:-4}
+# release_ports() {
+#     local sip_port=$1
+#     local media_port=$2
+#     local control_port=$3
+#     local num_media=${4:-4}
 
-    if [ -n "$sip_port" ]; then
-        unlock_port "$sip_port"
-    fi
+    
+#     if [ -n "$sip_port" ]; then
+#         unlock_port "$sip_port"
+#     fi
 
-    if [ -n "$media_port" ]; then
-        for i in $(seq 0 $((num_media - 1))); do
-            unlock_port $((media_port + i))
-        done
-    fi
+#     if [ -n "$media_port" ]; then
+#         for i in $(seq 0 $((num_media - 1))); do
+#             unlock_port $((media_port + i))
+#         done
+#     fi
 
-    if [ -n "$control_port" ]; then
-        unlock_port "$control_port"
-    fi
-}
+#     if [ -n "$control_port" ]; then
+#         unlock_port "$control_port"
+#     fi
+# }
 
 # ##
 # # Cleanup function to release ports on script exit
