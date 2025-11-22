@@ -46,8 +46,6 @@ else
 fi
 
 echo "`date` - [start] $INPUTFILE $PORT $MEDIA_PORT $CONTROL_PORT (max users $MAX_USERS, pct users is $PCT_USERS) stats: $STATS_FILE" >> "$LOG_PATH/error_$LOG_FILE.log"
-set -x
-
 
 #test if sipp has support for min_rtp_port
 if sipp -h | grep -q min_rtp_port; then
@@ -100,10 +98,22 @@ $MEDIAPORT_LOGIC \
 -trace_stat -stf $STATS_FILE -fd 15"
 
 # Log command to syslog
-logger -t sipp-register -p user.info "Starting registration: server=$SERVER_ID scenario=logger -t sipp-register -p user.info " transport=$TRANSPORT file=$LOG_FILE users=$MAX_USERS sip_port=$PORT media_port=$MEDIA_PORT control_port=$CONTROL_PORT"
+logger -t sipp-register -p user.info "Starting registration: server=$SERVER_ID scenario=register transport=$TRANSPORT file=$LOG_FILE users=$MAX_USERS sip_port=$PORT media_port=$MEDIA_PORT control_port=$CONTROL_PORT"
 
-# Execute sipp command
+# Log full sipp command
+logger -t sipp-register -p user.info "Command: $SIPP_CMD"
 
-logger -t sipp-register -p user.info "$SIPP_CMD"
+# Execute sipp command (runs in background with -bg flag)
+$SIPP_CMD 2>&1 | logger -t sipp-register -p user.info &
+LOGGER_PID=$!
 
-$SIPP_CMD 2>&1 | logger -t sipp-register -p user.info 
+# Give it 5 seconds to start, then verify it's still running
+sleep 5
+
+# Check if logger process (and by extension sipp) is still running
+if ps -p $LOGGER_PID > /dev/null 2>&1; then
+	logger -t sipp-register -p user.info "Registration process started successfully: server=$SERVER_ID scenario=register transport=$TRANSPORT file=$LOG_FILE users=$MAX_USERS pid=$LOGGER_PID"
+else
+	logger -t sipp-register -p user.err "Registration process failed to start or crashed: server=$SERVER_ID scenario=register transport=$TRANSPORT file=$LOG_FILE"
+	exit 1
+fi 
