@@ -105,7 +105,7 @@ lock_port() {
 
     # Verify lock was created
     if [ -f "$lockfile" ]; then
-        logger -t sipp-locks -p user.info "Locked port $port for $purpose by PID $$"
+        #logger -t sipp-locks -p user.info "Locked port $port for $purpose by PID $$"
         return 0
     else
         return 1
