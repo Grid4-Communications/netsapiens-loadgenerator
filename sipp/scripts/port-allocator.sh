@@ -56,7 +56,7 @@ cleanup_stale_locks() {
     while IFS= read -r lockfile; do
         # Extract port number from filename (port_12345.lock -> 12345)
         local port=$(basename "$lockfile" | sed 's/port_\([0-9]*\)\.lock/\1/')
-        logger -t sipp-locks -p user.info "Cleaning stale lock for port $port (older than ${timeout_minutes}min)"
+        #logger -t sipp-locks -p user.info "Cleaning stale lock for port $port (older than ${timeout_minutes}min)"
         rm -f "$lockfile" 2>/dev/null
         cleaned=$((cleaned + 1))
     done < <(find "$PORT_LOCK_DIR" -name "*.lock" -type f -mmin +${timeout_minutes} 2>/dev/null)
