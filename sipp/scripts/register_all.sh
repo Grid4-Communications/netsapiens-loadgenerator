@@ -43,13 +43,10 @@ if [ "$1" == "--server" ] && [ -n "$2" ]; then
             echo ""
             echo ">>> Starting registration for server: $SID"
             echo "---"
-            $0 --server "$SID"
-            RESULT=$?
-            if [ $RESULT -ne 0 ]; then
-                echo "Warning: Registration for server '$SID' failed with exit code $RESULT"
-            else
-                echo ">>> Completed registration for server: $SID"
-            fi
+            $0 --server "$SID" & # Run in background for parallel execution
+            
+            echo ">>> Completed registration for server: $SID"
+            sleep 2 # Slight delay between servers
             echo ""
         done
 
