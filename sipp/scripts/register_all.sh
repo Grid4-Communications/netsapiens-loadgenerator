@@ -125,12 +125,13 @@ MINOFHOUR=`date +"%M"`
 # Source the port allocator
 source "$BASE_DIR/sipp/scripts/port-allocator.sh"
 
-# Initialize port allocation system
-echo "Initializing port allocation system..."
+# Initialize port allocation system (fast - no cleanup)
 init_port_locks
+
+# Only cleanup stale locks once at the start (not per-file)
 cleanup_stale_locks
+
 echo "Port allocation ready. Lock directory: $PORT_LOCK_DIR"
-get_port_stats
 
 # get the public ip and push it into the sipp scripts for the media ip.
 PUBLICIP=`dig +short myip.opendns.com @resolver1.opendns.com -4`
@@ -197,6 +198,5 @@ for file in $CSV_PATH/*; do
 
 done
 
-# Final cleanup
-echo "Registration batch complete. Final port stats:"
-get_port_stats
+# Final cleanup - show stats
+echo "Registration batch complete."

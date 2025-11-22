@@ -31,46 +31,28 @@ init_port_locks() {
         echo "ERROR: Cannot create port lock directory: $PORT_LOCK_DIR" >&2
         return 1
     fi
-    # Cleanup old locks on init
-    cleanup_stale_locks
+    # Skip expensive cleanup on every init - let it happen periodically
+    # cleanup_stale_locks
 }
 
 ##
 # Cleanup stale lock files older than LOCK_TIMEOUT seconds
+# Optimized to use find -mmin for fast filtering
 ##
 cleanup_stale_locks() {
     if [ ! -d "$PORT_LOCK_DIR" ]; then
         return 0
     fi
 
-    local now=$(date +%s)
-    local cleaned=0
+    # Calculate minutes threshold (LOCK_TIMEOUT is in seconds)
+    local timeout_minutes=$((LOCK_TIMEOUT / 60 + 1))
 
-    # Use find to avoid glob expansion issues with nonexistent files
-    find "$PORT_LOCK_DIR" -name "*.lock" -type f 2>/dev/null | while read -r lockfile; do
-        if [ ! -f "$lockfile" ]; then
-            continue
-        fi
-
-        # Read timestamp from lock file
-        local timestamp=$(cat "$lockfile" 2>/dev/null | head -n1)
-        if [ -z "$timestamp" ]; then
-            # Invalid lock file, remove it
-            rm -f "$lockfile"
-            cleaned=$((cleaned + 1))
-            continue
-        fi
-
-        # Check if lock is stale
-        local age=$((now - timestamp))
-        if [ "$age" -gt "$LOCK_TIMEOUT" ]; then
-            rm -f "$lockfile"
-            cleaned=$((cleaned + 1))
-        fi
-    done
+    # Use find with -mmin to let filesystem do the filtering (much faster)
+    # Delete files older than timeout_minutes
+    local cleaned=$(find "$PORT_LOCK_DIR" -name "*.lock" -type f -mmin +${timeout_minutes} -delete -print 2>/dev/null | wc -l)
 
     if [ "$cleaned" -gt 0 ]; then
-        echo "Cleaned up $cleaned stale port locks" >&2
+        echo "Cleaned up $cleaned stale port locks (older than ${timeout_minutes}min)" >&2
     fi
 }
 
@@ -83,28 +65,18 @@ is_port_available() {
     local port=$1
     local lockfile="$PORT_LOCK_DIR/port_${port}.lock"
 
-    # Check if port is locked
+    # Quick check: if lock file exists and is recent (modified within LOCK_TIMEOUT)
+    # This is MUCH faster than reading file contents
     if [ -f "$lockfile" ]; then
-        # Check if lock is stale
-        local now=$(date +%s)
-        local timestamp=$(cat "$lockfile" 2>/dev/null | head -n1)
-        if [ -n "$timestamp" ]; then
-            local age=$((now - timestamp))
-            if [ "$age" -le "$LOCK_TIMEOUT" ]; then
-                return 1  # Port is locked and lock is fresh
-            fi
+        # Use find to check age without reading file (filesystem-level check)
+        local timeout_minutes=$((LOCK_TIMEOUT / 60 + 1))
+        if ! find "$lockfile" -mmin +${timeout_minutes} 2>/dev/null | grep -q .; then
+            # File exists and is NOT older than timeout = still locked
+            return 1
         fi
         # Lock is stale, remove it
-        rm -f "$lockfile"
+        rm -f "$lockfile" 2>/dev/null
     fi
-
-    # # Check if port is actually in use by the system
-    # # Use netstat or ss to check
-    # if command -v ss &>/dev/null; then
-    #     ss -tan | grep -q ":${port} " && return 1
-    # elif command -v netstat &>/dev/null; then
-    #     netstat -tan | grep -q ":${port} " && return 1
-    # fi
 
     return 0  # Port is available
 }
@@ -311,7 +283,7 @@ cleanup_allocated_ports() {
 trap cleanup_allocated_ports EXIT INT TERM
 
 ##
-# Get port allocation statistics
+# Get port allocation statistics (fast version)
 ##
 get_port_stats() {
     if [ ! -d "$PORT_LOCK_DIR" ]; then
@@ -319,22 +291,15 @@ get_port_stats() {
         return
     fi
 
+    local timeout_minutes=$((LOCK_TIMEOUT / 60 + 1))
+
+    # Count total locks (fast)
     local total_locks=$(find "$PORT_LOCK_DIR" -name "*.lock" -type f 2>/dev/null | wc -l)
-    local now=$(date +%s)
-    local stale=0
 
-    find "$PORT_LOCK_DIR" -name "*.lock" -type f 2>/dev/null | while read -r lockfile; do
-        if [ ! -f "$lockfile" ]; then
-            continue
-        fi
-        local timestamp=$(cat "$lockfile" 2>/dev/null | head -n1)
-        if [ -n "$timestamp" ]; then
-            local age=$((now - timestamp))
-            if [ "$age" -gt "$LOCK_TIMEOUT" ]; then
-                stale=$((stale + 1))
-            fi
-        fi
-    done
+    # Count stale locks using find -mmin (filesystem-level filtering, very fast)
+    local stale=$(find "$PORT_LOCK_DIR" -name "*.lock" -type f -mmin +${timeout_minutes} 2>/dev/null | wc -l)
 
-    echo "Total locks: $total_locks, Stale: $stale, Active: $((total_locks - stale))"
+    local active=$((total_locks - stale))
+
+    echo "Total locks: $total_locks, Stale: $stale, Active: $active"
 }
