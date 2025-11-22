@@ -125,8 +125,7 @@ source "$BASE_DIR/sipp/scripts/port-allocator.sh"
 # Initialize port allocation system (fast - no cleanup)
 init_port_locks
 
-# Only cleanup stale locks once at the start (not per-file)
-cleanup_stale_locks
+
 
 echo "Port allocation ready. Lock directory: $PORT_LOCK_DIR"
 
@@ -194,6 +193,9 @@ for file in $CSV_PATH/*; do
 	# Note: Ports will be released when register.sh completes via trap
 
 done
+
+# Only cleanup stale locks once at the start (not per-file)
+cleanup_stale_locks
 
 # Final cleanup - show stats
 echo "Registration batch complete."

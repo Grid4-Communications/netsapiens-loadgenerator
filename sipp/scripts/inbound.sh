@@ -260,8 +260,7 @@ $TLS_OPTIONS \
 -inf $BASE_DIR/sipp/csv/random_caller_ids.csv \
 -recv_timeout 60000 \
 -key media_ip $PUBLICIP \
--bg \
--trace_stat -stf $STATS_FILE -fd 15"
+-trace_stat -stf $STATS_FILE -fd 15 -bg "
 
 # Log command to syslog
 logger -t sipp-inbound -p user.info "Starting inbound calls: server=$SERVER_ID scenario=inbound transport=$TRANSPORT timezone=$TIMEZONE sip_port=$SIP_PORT media_port=$MEDIA_PORT control_port=$CONTROL_PORT"
@@ -289,6 +288,8 @@ elif [ $SIPP_EXIT -ne 0 ]; then
 	logger -t sipp-inbound -p user.info "Command: $SIPP_CMD"
 	exit 1
 else
+
+
 	logger -t sipp-inbound -p user.err "Inbound process failed to start or crashed: server=$SERVER_ID scenario=inbound transport=$TRANSPORT timezone=$TIMEZONE"
     # Log full sipp command
 	logger -t sipp-inbound -p user.info "Command: $SIPP_CMD"

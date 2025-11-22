@@ -8,7 +8,7 @@
 
 # Configuration
 PORT_LOCK_DIR="${PORT_LOCK_DIR:-/tmp/sipp-ports}"
-LOCK_TIMEOUT="${LOCK_TIMEOUT:-4200}"  # 70 minutes default (register.sh runs ~1hr)
+LOCK_TIMEOUT="${LOCK_TIMEOUT:-5400}"  # 90 minutes default (register.sh runs ~1hr)
 
 # Port ranges (ephemeral range to avoid conflicts)
 SIP_PORT_MIN=20000
@@ -68,14 +68,7 @@ is_port_available() {
     # Quick check: if lock file exists and is recent (modified within LOCK_TIMEOUT)
     # This is MUCH faster than reading file contents
     if [ -f "$lockfile" ]; then
-        # Use find to check age without reading file (filesystem-level check)
-        local timeout_minutes=$((LOCK_TIMEOUT / 60 + 1))
-        if ! find "$lockfile" -mmin +${timeout_minutes} 2>/dev/null | grep -q .; then
-            # File exists and is NOT older than timeout = still locked
-            return 1
-        fi
-        # Lock is stale, remove it
-        rm -f "$lockfile" 2>/dev/null
+        return 1    # Port is locked
     fi
 
     return 0  # Port is available
@@ -270,17 +263,17 @@ release_ports() {
     fi
 }
 
-##
-# Cleanup function to release ports on script exit
-##
-cleanup_allocated_ports() {
-    if [ -n "$ALLOCATED_SIP_PORT" ] && [ -n "$ALLOCATED_PORTS_PID" ] && [ "$ALLOCATED_PORTS_PID" -eq "$$" ]; then
-        release_ports "$ALLOCATED_SIP_PORT" "$ALLOCATED_MEDIA_PORT" "$ALLOCATED_CONTROL_PORT" 4
-    fi
-}
+# ##
+# # Cleanup function to release ports on script exit
+# ##
+# cleanup_allocated_ports() {
+#     if [ -n "$ALLOCATED_SIP_PORT" ] && [ -n "$ALLOCATED_PORTS_PID" ] && [ "$ALLOCATED_PORTS_PID" -eq "$$" ]; then
+#         release_ports "$ALLOCATED_SIP_PORT" "$ALLOCATED_MEDIA_PORT" "$ALLOCATED_CONTROL_PORT" 4
+#     fi
+# }
 
-# Register cleanup trap
-trap cleanup_allocated_ports EXIT INT TERM
+# # Register cleanup trap
+# trap cleanup_allocated_ports EXIT INT TERM
 
 ##
 # Get port allocation statistics (fast version)

@@ -94,8 +94,7 @@ SIPP_CMD="sipp ${SUT}${SIP_PORT_ADD_ON} -key expires 60 -r $[CALLRATE] -m $MAX_U
 -aa -default_behaviors -abortunexp \
 $MEDIAPORT_LOGIC \
 -i $PRIVATEIP -mi $PRIVATEIP \
--bg -error_file $LOG_PATH/error_$LOG_FILE.log \
--trace_stat -stf $STATS_FILE -fd 15"
+-trace_stat -stf $STATS_FILE -fd 15 -bg "
 
 # Log command to syslog
 logger -t sipp-register -p user.info "Starting registration: server=$SERVER_ID scenario=register transport=$TRANSPORT file=$LOG_FILE users=$MAX_USERS sip_port=$PORT media_port=$MEDIA_PORT control_port=$CONTROL_PORT"
