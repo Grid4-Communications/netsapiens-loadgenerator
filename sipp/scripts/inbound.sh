@@ -266,9 +266,6 @@ $TLS_OPTIONS \
 # Log command to syslog
 logger -t sipp-inbound -p user.info "Starting inbound calls: server=$SERVER_ID scenario=inbound transport=$TRANSPORT timezone=$TIMEZONE sip_port=$SIP_PORT media_port=$MEDIA_PORT control_port=$CONTROL_PORT"
 
-# Log full sipp command
-logger -t sipp-inbound -p user.info "Command: $SIPP_CMD"
-
 # Execute sipp command (runs in background with -bg flag)
 # Capture output to extract the PID
 SIPP_OUTPUT=$($SIPP_CMD 2>&1)
@@ -288,8 +285,12 @@ if [ -n "$SIPP_PID" ] && ps -p $SIPP_PID > /dev/null 2>&1; then
 	logger -t sipp-inbound -p user.info "Inbound process started successfully: server=$SERVER_ID scenario=inbound transport=$TRANSPORT timezone=$TIMEZONE calls=$NUMCALLS pid=$SIPP_PID"
 elif [ $SIPP_EXIT -ne 0 ]; then
 	logger -t sipp-inbound -p user.err "Inbound process failed to start: server=$SERVER_ID scenario=inbound transport=$TRANSPORT timezone=$TIMEZONE exit_code=$SIPP_EXIT"
+    # Log full sipp command
+	logger -t sipp-inbound -p user.info "Command: $SIPP_CMD"
 	exit 1
 else
 	logger -t sipp-inbound -p user.err "Inbound process failed to start or crashed: server=$SERVER_ID scenario=inbound transport=$TRANSPORT timezone=$TIMEZONE"
+    # Log full sipp command
+	logger -t sipp-inbound -p user.info "Command: $SIPP_CMD"
 	exit 1
 fi 

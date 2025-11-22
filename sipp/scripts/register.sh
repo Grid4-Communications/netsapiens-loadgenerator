@@ -100,8 +100,7 @@ $MEDIAPORT_LOGIC \
 # Log command to syslog
 logger -t sipp-register -p user.info "Starting registration: server=$SERVER_ID scenario=register transport=$TRANSPORT file=$LOG_FILE users=$MAX_USERS sip_port=$PORT media_port=$MEDIA_PORT control_port=$CONTROL_PORT"
 
-# Log full sipp command
-logger -t sipp-register -p user.info "Command: $SIPP_CMD"
+
 
 # Execute sipp command (runs in background with -bg flag)
 # Capture output to extract the PID
@@ -122,8 +121,12 @@ if [ -n "$SIPP_PID" ] && ps -p $SIPP_PID > /dev/null 2>&1; then
 	logger -t sipp-register -p user.info "Registration process started successfully: server=$SERVER_ID scenario=register transport=$TRANSPORT file=$LOG_FILE users=$MAX_USERS pid=$SIPP_PID"
 elif [ $SIPP_EXIT -ne 0 ]; then
 	logger -t sipp-register -p user.err "Registration process failed to start: server=$SERVER_ID scenario=register transport=$TRANSPORT file=$LOG_FILE exit_code=$SIPP_EXIT"
+	# Log full sipp command
+	logger -t sipp-register -p user.info "Command: $SIPP_CMD"
 	exit 1
 else
 	logger -t sipp-register -p user.err "Registration process failed to start or crashed: server=$SERVER_ID scenario=register transport=$TRANSPORT file=$LOG_FILE"
+	# Log full sipp command
+	logger -t sipp-register -p user.info "Command: $SIPP_CMD"
 	exit 1
 fi 
