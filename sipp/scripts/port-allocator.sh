@@ -11,16 +11,16 @@ PORT_LOCK_DIR="${PORT_LOCK_DIR:-/tmp/sipp-ports}"
 LOCK_TIMEOUT="${LOCK_TIMEOUT:-4200}"  # 70 minutes default (register.sh runs ~1hr)
 
 # Port ranges (ephemeral range to avoid conflicts)
-SIP_PORT_MIN=40000
-SIP_PORT_MAX=42000
-CONTROL_PORT_MIN=42001
-CONTROL_PORT_MAX=44000
-MEDIA_PORT_MIN=44001
+SIP_PORT_MIN=20000
+SIP_PORT_MAX=25000
+CONTROL_PORT_MIN=25001
+CONTROL_PORT_MAX=30000
+MEDIA_PORT_MIN=30001
 MEDIA_PORT_MAX=60000
 
 
 # Maximum attempts to find available ports
-MAX_ATTEMPTS=100
+MAX_ATTEMPTS=200
 
 ##
 # Initialize port lock directory
