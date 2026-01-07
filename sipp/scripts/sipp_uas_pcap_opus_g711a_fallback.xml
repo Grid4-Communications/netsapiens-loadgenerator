@@ -16,14 +16,14 @@
 <!-- Free Software Foundation, Inc.,                                    -->
 <!-- 59 Temple Place, Suite 330, Boston, MA  02111-1307 USA             -->
 <!--                                                                    -->
-<!--                 Sipp default 'uas' scenario.                       -->
+<!--           Sipp UAS scenario with Opus and G.711a fallback.         -->
 <!--                                                                    -->
 
-<scenario name="Basic UAS responder">
+<scenario name="UAS responder with Opus and G.711a fallback">
   <!-- By adding rrs="true" (Record Route Sets), the route sets         -->
   <!-- are saved and used for following messages sent. Useful to test   -->
   <!-- against stateful SIP proxies/B2BUAs.                             -->
-  
+
   <recv request="INVITE" crlf="true" rrs="true">
     <action>
     <!-- since we need to send a request to the remote part -->
@@ -75,9 +75,9 @@
     ]]>
   </send>
 
-  <pause distribution="uniform" min="200" max="1200"/>
+  <pause distribution="uniform" min="2000" max="10000"/>
 
-  
+
   <send retrans="500">
     <![CDATA[
 
@@ -96,11 +96,14 @@
       s=-
       c=IN IP[media_ip_type] [media_ip]
       t=0 0
-      m=audio [media_port] RTP/AVP 8
+      m=audio [media_port] RTP/AVP 111 8 101
+      a=rtpmap:111 opus/48000/2
+      a=fmtp:111 minptime=10; useinbandfec=1
       a=rtpmap:8 PCMA/8000
+      a=rtpmap:101 telephone-event/8000
+      a=fmtp:101 0-15
 
     ]]>
-    <action><exec rtp_stream="/usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/mr.telephone.man.wav" /></action>
   </send>
   <recv request="ACK"
         rtd="true"
@@ -108,13 +111,14 @@
   </recv>
 
   <!-- Play a pre-recorded PCAP file (RTP stream)                       -->
+  <!-- NOTE: Depending on negotiated codec, use opus.pcap or g711a.pcap -->
   <!-- <nop>
     <action>
       <exec play_pcap_audio="g711a.pcap"/>
     </action>
   </nop> -->
 
-  <recv request="BYE" timeout="12000" ontimeout="send_bye" ></recv>
+  <recv request="BYE" timeout="90000" ontimeout="send_bye" ></recv>
   <send next="99">
     <![CDATA[
 
@@ -152,8 +156,8 @@
 
 
   <label id="3"/>
-  
-  
+
+
 
   <!-- Keep the call open for a while in case the 200 is lost to be     -->
   <!-- able to retransmit it if we receive the BYE again.               -->
@@ -166,5 +170,5 @@
 
   <!-- definition of the call length repartition table (unit is ms)     -->
   <CallLengthRepartition value="10, 50, 100, 500, 1000, 5000, 10000"/>
-  
+
 </scenario>

@@ -1,0 +1,34 @@
+{
+  "servers": [
+    {
+      "id": "prod1",
+      "hostname": "sas1.example.com",
+      "apikey": "nss_your_api_key_here",
+      "maxDomains": 50,
+      "peakCps": 10,
+      "registrationPct": 0.8,
+      "seed": 12345,
+      "description": "Production Server 1 - Primary load testing environment"
+    },
+    {
+      "id": "prod2",
+      "hostname": "sas2.example.com",
+      "apikey": "nss_another_api_key_here",
+      "maxDomains": 100,
+      "peakCps": 20,
+      "registrationPct": 0.9,
+      "seed": 67890,
+      "description": "Production Server 2 - Secondary load testing environment"
+    },
+    {
+      "id": "staging",
+      "hostname": "staging.example.com",
+      "apikey": "nss_staging_api_key",
+      "maxDomains": 10,
+      "peakCps": 0.5,
+      "registrationPct": 0.75,
+      "seed": 11111,
+      "description": "Staging environment for testing - low load with decimal CPS"
+    }
+  ]
+}

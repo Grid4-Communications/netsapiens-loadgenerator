@@ -5,10 +5,115 @@ This set of tools is designed to help generatate a batch of domains with users, 
 
 ## Disclaimer
 
-This application is unsupported by netsapiens/crexendo and is designed for a sample application, test tool and learning use case. Any support or advancement would be a community effort only with no warranties or SLAs provided by the original contributor or netsapiens. These are also real calls that will be tracked against any license or session limits. 
+This application is unsupported by netsapiens/crexendo and is designed for a sample application, test tool and learning use case. Any support or advancement would be a community effort only with no warranties or SLAs provided by the original contributor or netsapiens. These are also real calls that will be tracked against any license or session limits.
 
-## Usage 
-You should run 1 server per target SiPbx servers. Can be run anywhere that can access SiPbx SIP enpoint and Api. Note there is network usage so beware of hidden costs there if using a provider charging for network.
+## Multi-Server Support
+
+This tool now supports testing multiple target servers from a single installation! You can configure and manage load generation for multiple NetSapiens servers with:
+
+- **Independent configuration** per server (SEED, maxDomains, peakCps, etc.)
+- **Isolated CSV files** to prevent data conflicts
+- **Automatic port management** to prevent conflicts when testing multiple servers simultaneously
+- **Server-specific logging** for easier debugging
+
+### Quick Start: Multi-Server Mode
+
+1. **Create `servers.json`** configuration:
+   ```bash
+   cp servers.json.example servers.json
+   # Edit servers.json with your server details
+   ```
+
+2. **Install `jq`** (required for multi-server mode):
+   ```bash
+   # Ubuntu/Debian
+   sudo apt-get install jq
+
+   # macOS
+   brew install jq
+   ```
+
+3. **Generate data for a specific server**:
+   ```bash
+   node server.js --server prod1
+   ```
+
+4. **Run SIPp scripts**:
+   ```bash
+   # For a specific server
+   sipp/scripts/register_all.sh --server prod1
+   sipp/scripts/inbound.sh US_Eastern --server prod1
+
+   # For ALL servers at once
+   sipp/scripts/register_all.sh --server all
+   sipp/scripts/inbound.sh US_Eastern --server all
+   ```
+
+### Legacy Single-Server Mode
+
+Your existing setup continues to work without any changes! If you don't have a `servers.json` file, the system automatically uses your `.env` configuration:
+
+```bash
+# Works exactly as before
+node server.js
+sipp/scripts/register_all.sh
+sipp/scripts/inbound.sh US_Eastern
+```
+
+### Running for All Servers at Once
+
+You can run scripts for all configured servers with a single command using `--server all`:
+
+```bash
+# Register devices for all servers
+sipp/scripts/register_all.sh --server all
+
+# Run inbound calls for all servers (specific timezone)
+sipp/scripts/inbound.sh US_Eastern --server all
+
+# Generate data for all servers
+# Note: Use a loop for this as server.js requires separate runs
+for server in prod1 prod2 staging; do
+  node server.js --server $server
+done
+```
+
+**How it works:**
+- The script reads all server IDs from `servers.json`
+- Loops through each server sequentially
+- Calls itself recursively with each specific server ID
+- Provides clear output showing progress for each server
+- Continues even if one server fails (with a warning)
+
+**Example output:**
+```
+==========================================
+Running for ALL servers in servers.json
+==========================================
+
+>>> Starting registration for server: prod1
+---
+Multi-server mode: Using server 'prod1'
+Target server: sas1.example.com
+...
+>>> Completed registration for server: prod1
+
+>>> Starting registration for server: prod2
+---
+Multi-server mode: Using server 'prod2'
+Target server: sas2.example.com
+...
+>>> Completed registration for server: prod2
+
+==========================================
+Finished running for all servers
+==========================================
+```
+
+See [MIGRATION.md](MIGRATION.md) for detailed migration instructions and troubleshooting.
+
+## Usage
+You can run multiple target servers from a single installation (multi-server mode) or use the legacy single-server configuration. The tool can be run anywhere that can access the SIPbx SIP endpoint and API. Note there is network usage so beware of hidden costs if using a provider charging for network.
 
 ## Main User Generation logic
 * Application will create up MAX_DOMAIN number of domains using a random name generation tool. The randomness is controlled by the SEED variable in the .env so repeated running will return similar names. 
@@ -100,25 +205,71 @@ Create a connection to match on "inbound-carrier" and lock to IP if needed. Send
 * natwan = sdp #set on connection accpeting traffic from sipp. allows us to use "echo" function to test audio.
 
 ### Example run
+
+**Legacy Single-Server Mode:**
 ```
-root@core1-phx:/usr/local/NetSapiens/netsapiens-loadgenerator# node server.js 
+root@core1-phx:/usr/local/NetSapiens/netsapiens-loadgenerator# node server.js
+
+======================================
+Configuration Mode: single
+Target Server: ns-api.com
+Server ID: default
+Max Domains: 10
+Peak CPS: 10
+Registration %: 80
+SEED: 123456
+======================================
+
 [0]Creating domain o_conner_kuhic_inc with 29 users in US/Pacific timezone and area code 682 and main number 6825556045
 [1]Creating domain oberbrunner_llc with 27 users in US/Mountain timezone and area code 213 and main number 2135555576
 [2]Creating domain bogisich_group with 30 users in US/Central timezone and area code 576 and main number 5765557408
 [3]Creating domain o_keefe_casper_llc with 42 users in US/Eastern timezone and area code 639 and main number 6395559513
 [4]Creating domain bailey_jerde_and_jacobs_inc with 49 users in US/Alaska timezone and area code 492 and main number 4925555632
+```
 
-root@core1-phx:/usr/local/NetSapiens/netsapiens-loadgenerator# head -n4 sipp/csv/devices/oberbrunner_llc.csv 
+**Multi-Server Mode:**
+```
+root@core1-phx:/usr/local/NetSapiens/netsapiens-loadgenerator# node server.js --server prod1
+
+======================================
+Configuration Mode: multi
+Target Server: sas1.example.com
+Server ID: prod1
+Max Domains: 50
+Peak CPS: 10
+Registration %: 80
+SEED: 12345
+======================================
+
+[0]Creating domain acme_corp with 45 users in US/Pacific timezone and area code 415 and main number 4155556789
+[1]Creating domain tech_solutions_llc with 38 users in US/Mountain timezone and area code 303 and main number 3035557890
+
+
+# Legacy mode CSV output (sipp/csv/devices/):
+root@core1-phx:/usr/local/NetSapiens/netsapiens-loadgenerator# head -n4 sipp/csv/devices/oberbrunner_llc.csv
 SEQUENTIAL
 Dan Ankunding;1001;oberbrunner_llc;[authentication username=1001 password=74d9be7f523f]
 Edmund Kreiger;1000;oberbrunner_llc;[authentication username=1000 password=894abc3c87b9]
 Hugo Koelpin;1007;oberbrunner_llc;[authentication username=1007 password=8912ccd20f76]
 
-root@core1-phx:/usr/local/NetSapiens/netsapiens-loadgenerator# head -n4 sipp/csv/phonenumbers/US_Mountain.csv 
+root@core1-phx:/usr/local/NetSapiens/netsapiens-loadgenerator# head -n4 sipp/csv/phonenumbers/US_Mountain.csv
 RANDOM
 12135555576;oberbrunner_llc;DID for Design
 12135555577;oberbrunner_llc;DID for Development
 12135555575;oberbrunner_llc;DID for Engineering
+
+# Multi-server mode CSV output (sipp/csv/servers/prod1/devices/):
+root@core1-phx:/usr/local/NetSapiens/netsapiens-loadgenerator# head -n4 sipp/csv/servers/prod1/devices/acme_corp.csv
+SEQUENTIAL
+John Smith;1000;acme_corp;[authentication username=1000 password=a1b2c3d4e5f6]
+Jane Doe;1001;acme_corp;[authentication username=1001 password=f6e5d4c3b2a1]
+Bob Johnson;1002;acme_corp;[authentication username=1002 password=123abc456def]
+
+root@core1-phx:/usr/local/NetSapiens/netsapiens-loadgenerator# head -n4 sipp/csv/servers/prod1/phonenumbers/US_Pacific.csv
+RANDOM
+14155556789;acme_corp;DID for Sales
+14155556790;acme_corp;DID for Support
+14155556791;acme_corp;DID for Customer Service
 ```
 
 ### Example in use. 
@@ -137,6 +288,162 @@ RANDOM
 ![alt text](images/image-5.png)
 ![alt text](images/image-6.png)
 
+
+## Prometheus Metrics Monitoring
+
+This tool includes a built-in metrics server that exposes SIPp response time statistics in Prometheus format. Track response times, percentiles, and performance metrics across all your load tests.
+
+### Features
+
+- **Response Time Tracking**: Both histogram (with percentiles) and summary metrics
+- **Multi-Server Support**: Separate metrics per server when using servers.json configuration
+- **Real-time Updates**: Continuously monitors SIPp statistics files
+- **Prometheus Compatible**: Standard /metrics endpoint for Prometheus scraping
+- **Multiple Metrics Types**:
+  - `sipp_response_time_seconds` - Histogram with buckets (10ms to 5s)
+  - `sipp_response_time_seconds_summary` - Summary with P50, P95, P99 quantiles
+  - `sipp_response_time_average_seconds` - Average response time gauge
+  - `sipp_response_time_p50_seconds` - P50 (median) gauge
+  - `sipp_response_time_p95_seconds` - P95 gauge
+  - `sipp_response_time_p99_seconds` - P99 gauge
+  - `sipp_response_count_total` - Total response count
+
+All metrics include labels: `{server="...", scenario="...", operation="..."}`
+
+### Quick Start
+
+1. **Install dependencies** (if not already installed):
+   ```bash
+   npm install
+   ```
+
+2. **Start the metrics server**:
+   ```bash
+   # Using npm script
+   npm run metrics
+
+   # Or directly
+   node metrics-server.js
+
+   # Or using the startup script
+   ./scripts/start-metrics-server.sh start
+   ```
+
+3. **Access metrics**:
+   - Prometheus endpoint: http://localhost:9090/metrics
+   - Health check: http://localhost:9090/health
+   - Server info: http://localhost:9090/
+
+4. **Run your SIPp load tests** - metrics will automatically be collected from the SIPp statistics files.
+
+### Configuration
+
+Configure the metrics server using environment variables in your `.env` file:
+
+```bash
+# Metrics server configuration
+METRICS_PORT=9090           # Port for metrics server (default: 9090)
+STATS_DIR=./sipp/stats      # Directory for SIPp stats files (default: ./sipp/stats)
+UPDATE_INTERVAL=5           # Update interval in seconds (default: 5)
+```
+
+### Using the Startup Script
+
+The startup script provides easy management of the metrics server:
+
+```bash
+# Start the server
+./scripts/start-metrics-server.sh start
+
+# Check status
+./scripts/start-metrics-server.sh status
+
+# View logs
+./scripts/start-metrics-server.sh logs
+
+# Restart the server
+./scripts/start-metrics-server.sh restart
+
+# Stop the server
+./scripts/start-metrics-server.sh stop
+```
+
+### Prometheus Configuration
+
+Add this scrape config to your `prometheus.yml`:
+
+```yaml
+scrape_configs:
+  - job_name: 'sipp-loadgen'
+    static_configs:
+      - targets: ['localhost:9090']
+    scrape_interval: 15s
+```
+
+### Example Prometheus Queries
+
+```promql
+# P95 response time by server
+sipp_response_time_p95_seconds{server="prod1"}
+
+# Average response time across all servers
+avg(sipp_response_time_average_seconds)
+
+# Response count by scenario
+sum by (scenario) (sipp_response_count_total)
+
+# Histogram quantile (P95) from histogram data
+histogram_quantile(0.95, rate(sipp_response_time_seconds_bucket[5m]))
+
+# Summary quantile (P99)
+sipp_response_time_seconds_summary{quantile="0.99"}
+```
+
+### Grafana Dashboard
+
+You can create a Grafana dashboard with panels for:
+
+1. **Response Time Over Time** (line chart)
+   - Query: `sipp_response_time_p50_seconds`, `sipp_response_time_p95_seconds`, `sipp_response_time_p99_seconds`
+
+2. **Response Time Distribution** (heatmap)
+   - Query: `rate(sipp_response_time_seconds_bucket[5m])`
+
+3. **Average Response Time by Server** (gauge)
+   - Query: `sipp_response_time_average_seconds`
+
+4. **Total Responses** (counter)
+   - Query: `sipp_response_count_total`
+
+5. **Active Stats Files** (gauge)
+   - Query: `sipp_stats_files_active`
+
+### How It Works
+
+1. **SIPp Statistics**: The bash scripts automatically enable `-trace_stat` flag when running SIPp, generating CSV statistics files in `sipp/stats/`
+
+2. **File Watching**: The metrics server uses `chokidar` to watch for new or modified stats files
+
+3. **CSV Parsing**: When files change, the parser extracts response time distributions from SIPp's output
+
+4. **Metrics Export**: Prometheus metrics are calculated and exposed at the `/metrics` endpoint
+
+5. **Multi-Server**: When using `--server` flag, metrics are automatically labeled with the server ID
+
+### Troubleshooting
+
+**Metrics not updating:**
+- Check that SIPp scripts are running: `ps aux | grep sipp`
+- Verify stats files exist: `ls -la sipp/stats/`
+- Check metrics server logs: `./scripts/start-metrics-server.sh logs`
+
+**No stats files generated:**
+- Ensure you've run the latest version of register.sh scripts
+- Check that SIPp supports `-trace_stat` flag: `sipp -h | grep trace_stat`
+
+**Port 9090 already in use:**
+- Change `METRICS_PORT` in `.env` to a different port
+- Or stop conflicting service: `sudo lsof -i :9090`
 
 ### Additional Tools 
 
