@@ -133,10 +133,15 @@ echo "Port allocation ready. Lock directory: $PORT_LOCK_DIR"
 PUBLICIP=`dig +short myip.opendns.com @resolver1.opendns.com -4`
 PRIVATEIP=$(ip a s|sed -ne '/127.0.0.1/!{s/^[ \t]*inet[ \t]*\([0-9.]\+\)\/.*$/\1/p}')
 
+UAS_SCRIPT="sipp_uas_pcap_g711a.xml"
+if [ "$USE_OPUS" == "yes" ] || [ "$USE_OPUS" == "1" ]; then
+	UAS_SCRIPT="sipp_uas_pcap_opus_g711a_fallback.xml"
+fi
+
 if [ "$IP_USE_PUBLIC" == "1" ]; then
-	sed -i -e "s/\[media_ip\]/$PUBLICIP/g" /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/sipp_uas_pcap_g711a.xml
+	sed -i -e "s/\[media_ip\]/$PUBLICIP/g" /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/$UAS_SCRIPT
 else 
-	sed -i -e "s/\[media_ip\]/$PRIVATEIP/g" /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/sipp_uas_pcap_g711a.xml
+	sed -i -e "s/\[media_ip\]/$PRIVATEIP/g" /usr/local/NetSapiens/netsapiens-loadgenerator/sipp/scripts/$UAS_SCRIPT
 fi
 
 ulimit -n 65536
