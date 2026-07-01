@@ -1,0 +1,40 @@
+name: Sync Upstream Fork
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Merge default branch from upstream
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          default_branch="$(gh api "repos/$REPO" --jq '.default_branch')"
+
+          set +e
+          response="$(gh api -X POST "repos/$REPO/merge-upstream" -f branch="$default_branch" 2>&1)"
+          status=$?
+          set -e
+
+          if [ "$status" -eq 0 ]; then
+            printf '%s\n' "$response"
+            exit 0
+          fi
+
+          if printf '%s' "$response" | grep -qiE 'not behind upstream|already up to date|No commits between'; then
+            printf '%s\n' "$response"
+            exit 0
+          fi
+
+          printf '%s\n' "$response"
+          exit "$status"
